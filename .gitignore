@@ -1,55 +1,20 @@
-# Prerequisites
-*.d
+# Momentics / Eclipse workspace state
+.metadata/
+RemoteSystemsTempFiles/
+.settings/*.prefs.bak
 
-# Object files
+# Recursive-make build output (keep x86_64/Makefile!)
+**/x86_64/o/
+**/x86_64/o-g/
+**/x86_64/*/o/
 *.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
-*.ilk
 *.map
-*.exp
+*.sym
 
-# Precompiled Headers
-*.gch
-*.pch
+# Misc
+*.log
+.DS_Store
+Thumbs.db
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
-*.dwo
+# QNX Executable template build output
+**/build/

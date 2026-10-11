@@ -13,6 +13,7 @@
 #define CENTRAL_SERVICE   "central_ctrl"
 #define DISPLAY_SERVICE   "display_ctrl"
 
+#define X1_GATE_LOWER_TIME_MS 2000
 #define X1_GATE_TIMEOUT_MS    5000
 #define IPC_SEND_TIMEOUT_MS    750
 

@@ -22,10 +22,7 @@ void *sensor_input_thread(void *arg)
 
     printf("\nX1 keyboard simulation commands:\n");
     printf("  A + Enter : train approaching\n");
-    printf("  D + Enter : gate DOWN confirmed\n");
-    printf("  T + Enter : train enters crossing\n");
     printf("  C + Enter : train cleared crossing\n");
-    printf("  U + Enter : gate UP confirmed\n");
     printf("  F + Enter : gate fault\n");
     printf("  R + Enter : manual clear-fault request\n");
     printf("  Q + Enter : quit X1\n\n");
@@ -39,24 +36,9 @@ void *sensor_input_thread(void *arg)
                                     PULSE_X1_TRAIN_APPROACH);
                 break;
 
-            case 'D':
-                send_internal_pulse(args->controller_coid,
-                                    PULSE_X1_GATE_DOWN);
-                break;
-
-            case 'T':
-                send_internal_pulse(args->controller_coid,
-                                    PULSE_X1_TRAIN_ENTER);
-                break;
-
             case 'C':
                 send_internal_pulse(args->controller_coid,
                                     PULSE_X1_TRAIN_CLEAR);
-                break;
-
-            case 'U':
-                send_internal_pulse(args->controller_coid,
-                                    PULSE_X1_GATE_UP);
                 break;
 
             case 'F':

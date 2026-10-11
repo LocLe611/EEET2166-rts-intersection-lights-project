@@ -27,7 +27,7 @@ static timer_t create_gate_timer(int self_coid)
     SIGEV_PULSE_INIT(&event,
                      self_coid,
                      SIGEV_PULSE_PRIO_INHERIT,
-                     PULSE_X1_GATE_TIMEOUT,
+                     PULSE_X1_GATE_COMPLETE,
                      0);
 
     if (timer_create(CLOCK_MONOTONIC, &event, &timer_id) == -1) {
@@ -76,10 +76,11 @@ int main(void)
     printf("========================================\n");
 
     /*
-     * Register X1 with the global QNX name service.
-     * This assumes gns/global name service is configured in your lab setup.
+     * Local service for standalone testing.
+     * Change 0 back to NAME_FLAG_ATTACH_GLOBAL when integrating
+     * with the other QNX nodes using GNS.
      */
-    attach = name_attach(NULL, X1_SERVICE, 0 /*NAME_FLAG_ATTACH_GLOBAL*/);
+    attach = name_attach(NULL, X1_SERVICE, 0 /* NAME_FLAG_ATTACH_GLOBAL */);
 
     if (attach == NULL) {
         perror("name_attach");
@@ -88,7 +89,8 @@ int main(void)
 
     /*
      * Create a connection back to X1's own channel.
-     * The keyboard input thread and gate timer use this to send internal pulses.
+     * The keyboard input thread and gate timer use this
+     * to send internal pulses.
      */
     self_coid = ConnectAttach(ND_LOCAL_NODE,
                               0,
@@ -153,18 +155,11 @@ int main(void)
             break;
         }
 
-        /*
-         * rcvid == 0 means a pulse.
-         * Pulses do not receive MsgReply().
-         */
         if (rcvid == 0) {
             int code;
 
             code = receive_buffer.pulse.code;
 
-            /*
-             * Codes below the application-available range are reserved by QNX.
-             */
             if (code < _PULSE_CODE_MINAVAIL) {
                 handle_kernel_pulse(&receive_buffer.pulse);
                 continue;
@@ -175,20 +170,8 @@ int main(void)
                     railway_train_approach(&controller);
                     break;
 
-                case PULSE_X1_GATE_DOWN:
-                    railway_gate_down_confirmed(&controller);
-                    break;
-
-                case PULSE_X1_TRAIN_ENTER:
-                    railway_train_enter(&controller);
-                    break;
-
                 case PULSE_X1_TRAIN_CLEAR:
                     railway_train_clear(&controller);
-                    break;
-
-                case PULSE_X1_GATE_UP:
-                    railway_gate_up_confirmed(&controller);
                     break;
 
                 case PULSE_X1_MANUAL_FAULT:
@@ -199,8 +182,8 @@ int main(void)
                     railway_clear_fault(&controller);
                     break;
 
-                case PULSE_X1_GATE_TIMEOUT:
-                    railway_gate_timeout(&controller);
+                case PULSE_X1_GATE_COMPLETE:
+                    railway_gate_lowering_complete(&controller);
                     break;
 
                 case PULSE_X1_QUIT:
@@ -216,17 +199,14 @@ int main(void)
         }
 
         /*
-         * name_open() causes the server to receive an _IO_CONNECT message.
+         * name_open() causes the server to receive
+         * an _IO_CONNECT message.
          */
         if (receive_buffer.header.type == _IO_CONNECT) {
             MsgReply(rcvid, EOK, NULL, 0);
             continue;
         }
 
-        /*
-         * Reject other QNX-reserved I/O messages.
-         * Our application message types start above _IO_MAX.
-         */
         if (receive_buffer.header.type >= _IO_BASE &&
             receive_buffer.header.type <= _IO_MAX) {
             MsgError(rcvid, ENOSYS);

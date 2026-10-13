@@ -93,7 +93,7 @@ static void parse_args(int argc, char *argv[], ctrl_t *c, const char **service)
  * side-channel connection to ourselves. */
 static int setup_ipc(ctrl_t *c, const char *service)
 {
-    c->attach = name_attach(NULL, service, 0);
+	c->attach = name_attach(NULL, service, NAME_FLAG_ATTACH_GLOBAL);
     if (c->attach == NULL)
     {
         perror("name_attach (is another copy already running?)");
@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
     }
     set_my_priority(PRIO_CONTROLLER);
 
-    printf("%s controller up: /dev/name/local/%s, TIME_SCALE %d, %s\n",
+    printf("%s controller up: /dev/name/global/%s, TIME_SCALE %d, %s\n",
            c.name, service, TIME_SCALE,
            c.standalone ? "X1 heartbeat NOT required (-s)" : "expecting X1 heartbeats");
 

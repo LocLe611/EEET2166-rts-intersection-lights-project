@@ -1,6 +1,6 @@
-/* log.c — log file writer. Any thread calls log_msg(), which only formats and
- * enqueues; the logger thread is the ONLY one that touches the file, so slow
- * file I/O never delays the RX server or the link threads. */
+/* log.c — log file writer. Any thread calls log_msg(), which only formats and queues
+ * the line; the logger thread is the ONLY one that touches the file, so slow file
+ * I/O never delays the RX server or the link threads. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,7 +14,7 @@ static pthread_cond_t  cv = PTHREAD_COND_INITIALIZER;
 static char     q[LOG_Q][LOG_LINE];
 static int      head, count;
 static unsigned dropped;
-static char     recent[LOG_RECENT][LOG_LINE];  /* last few lines for the dashboard */
+static char     recent[LOG_RECENT][LOG_LINE];   /* last few lines, for the dashboard */
 static int      recent_head, recent_n;
 static FILE    *fp;
 
@@ -50,7 +50,7 @@ void log_msg(const char *fmt, ...)
     if (recent_n < LOG_RECENT) recent_n++;
     pthread_mutex_unlock(&m);
 
-    table_changed();   /* refresh the events panel */
+    table_changed();   /* refresh the dashboard's events panel */
 }
 
 /* Copy the newest lines, oldest first. */

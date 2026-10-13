@@ -1,6 +1,6 @@
-/* tick.c — one thread driven by a periodic QNX timer pulse (not sleep()).
- * Every TICK_MS it: (1) runs the link watchdog, (2) advances the simulated
- * time of day, (3) applies the time-of-day schedule when the pattern changes. */
+/* tick.c — one thread driven by a periodic QNX timer pulse (no sleep()).
+ * Every TICK_MS: (1) link watchdog, (2) advance the simulated time of day,
+ * (3) apply the time-of-day schedule when the pattern changes. */
 #include <errno.h>
 #include <string.h>
 #include <sys/neutrino.h>
@@ -25,29 +25,23 @@ static int pattern_for(unsigned m)
     return PAT_OFFPEAK;
 }
 
-/* Pattern -> (mode, timing). Peak = fixed timing; off-peak/night = sensor driven. */
-void apply_pattern(int pat, int force)
+/* Peak = fixed timing; off-peak and night = sensor driven (spec: "commonly used"). */
+void apply_pattern(int pat)
 {
-    static const uint32_t t_peak[TIM_COUNT]  = TIMING_PEAK;
-    static const uint32_t t_def[TIM_COUNT]   = TIMING_DEFAULT;
-    static const uint32_t t_night[TIM_COUNT] = TIMING_NIGHT;
-    const uint32_t *timing = pat == PAT_PEAK ? t_peak : pat == PAT_NIGHT ? t_night : t_def;
-    tl_mode_t mode = (pat == PAT_PEAK) ? MODE_FIXED : MODE_SENSOR;
+    operation_mode_t mode = (pat == PAT_PEAK) ? MODE_FIXED : MODE_SENSOR;
 
     for (node_id_t n = NODE_I1; n <= NODE_I2; n++) {
         int skip;
         pthread_rwlock_wrlock(&g_c.lock);
         node_info_t *ni = &g_c.node[n];
-        skip = !force && (ni->sched_paused || ni->override_dir);   /* operator wins */
-        if (!skip) {
-            ni->desired_mode = mode;
-            memcpy(ni->desired_timing, timing, sizeof ni->desired_timing);
-        }
+        skip = ni->sched_paused || ni->desired_override != OVERRIDE_NONE;   /* operator wins */
+        if (!skip) ni->desired_mode = mode;
         pthread_rwlock_unlock(&g_c.lock);
 
-        if (skip) { log_msg("schedule: %s skipped (manual control)", node_str(n)); continue; }
-        cmdq_push(n, CMD_SET_TIMING, 0, timing);   /* timing applies at next phase change */
-        cmdq_push(n, CMD_SET_MODE, mode, NULL);
+        if (skip) { log_msg("schedule: %s skipped (under manual control)", node_str(n)); continue; }
+        cmd_t c;
+        build_set_mode(&c, mode);
+        cmdq_push(n, &c);
     }
 }
 
@@ -59,6 +53,7 @@ static void watchdog(void)
 
     pthread_rwlock_wrlock(&g_c.lock);
     for (int i = 0; i < 3; i++) {
+        if (watched[i] == NODE_X1 && !X1_SENDS_HEARTBEAT) continue;   /* see central.h */
         node_info_t *ni = &g_c.node[watched[i]];
         if (ni->link == LINK_ONLINE && now - ni->last_seen_ms > OFFLINE_TIMEOUT_MS) {
             ni->link = LINK_OFFLINE;
@@ -69,8 +64,7 @@ static void watchdog(void)
 
     for (int i = 0; i < 3; i++)
         if (went_offline[i])
-            log_msg("%s: OFFLINE (no message for %d ms)%s", node_str(watched[i]),
-                    OFFLINE_TIMEOUT_MS, watched[i] == NODE_X1 ? " - train state UNKNOWN" : "");
+            log_msg("%s: OFFLINE (no message for %d ms)", node_str(watched[i]), OFFLINE_TIMEOUT_MS);
 }
 
 static void sim_clock_and_schedule(void)
@@ -84,12 +78,12 @@ static void sim_clock_and_schedule(void)
     pat     = pattern_for(m);
     changed = (pat != g_c.pattern);
     enabled = g_c.sched_enabled;
-    if (enabled) g_c.pattern = pat;    /* while disabled, re-apply when re-enabled */
+    if (enabled) g_c.pattern = pat;
     pthread_rwlock_unlock(&g_c.lock);
 
     if (changed && enabled) {
         log_msg("schedule: %02u:%02u -> %s", m / 60, m % 60, pattern_str(pat));
-        apply_pattern(pat, 0);
+        apply_pattern(pat);
     }
 }
 
@@ -108,9 +102,10 @@ void *tick_thread(void *arg)
         return NULL;
     }
     struct itimerspec its;
-    its.it_value.tv_sec     = TICK_MS / 1000;
-    its.it_value.tv_nsec    = (long)(TICK_MS % 1000) * 1000000L;
-    its.it_interval         = its.it_value;           /* periodic */
+    memset(&its, 0, sizeof its);
+    its.it_value.tv_sec  = TICK_MS / 1000;
+    its.it_value.tv_nsec = (long)(TICK_MS % 1000) * 1000000L;
+    its.it_interval      = its.it_value;          /* periodic */
     timer_settime(tid, 0, &its, NULL);
 
     struct _pulse p;
@@ -119,7 +114,7 @@ void *tick_thread(void *arg)
         if (p.code != PC_TICK) continue;
         watchdog();
         sim_clock_and_schedule();
-        table_changed();                                /* clock moved: redraw */
+        table_changed();                           /* clock moved: redraw */
     }
     return NULL;
 }

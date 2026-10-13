@@ -66,7 +66,8 @@ typedef enum
     MSG_RAILWAY_STATUS,
     MSG_FAULT_STATUS,
     MSG_SYSTEM_STATUS,
-    MSG_CLEAR_FAULT
+    MSG_CLEAR_FAULT,
+	MSG_OVERRIDE
 } app_msg_type_t;
 
 typedef enum
@@ -124,6 +125,64 @@ typedef struct
 {
     msg_header_t header;
 } clear_fault_msg_t;
+
+typedef enum
+{
+    PHASE_ALL_RED = 0,
+    PHASE_MAIN_GREEN,
+    PHASE_MAIN_YELLOW,
+    PHASE_SIDE_GREEN,
+    PHASE_SIDE_YELLOW,
+    PHASE_PED_WALK,
+    PHASE_PED_CLEAR,
+    PHASE_FAULT,
+    PHASE_COUNT
+} intersection_phase_t;          /* order must match phase_name() in display.c */
+
+typedef enum
+{
+    PED_DONT_WALK = 0,
+    PED_WALK,
+    PED_FLASHING
+} ped_light_t;
+
+typedef enum
+{
+    OVERRIDE_NONE = 0,
+    OVERRIDE_MAIN,
+    OVERRIDE_SIDE
+} override_t;
+
+typedef struct
+{
+    msg_header_t header;          /* type = MSG_SET_MODE */
+    uint8_t mode;                 /* operation_mode_t */
+    uint8_t reserved[3];
+} set_mode_msg_t;
+
+typedef struct
+{
+    msg_header_t header;          /* type = MSG_OVERRIDE */
+    uint8_t override;             /* override_t */
+    uint8_t reserved[3];
+} override_msg_t;
+
+typedef struct
+{
+    msg_header_t header;          /* MSG_LIGHT_STATUS / MSG_INTERSECTION_STATUS */
+    uint8_t intersection_state;   /* intersection_state_t */
+    uint8_t mode;                 /* operation_mode_t */
+    uint8_t phase;                /* intersection_phase_t */
+    uint8_t main_light;           /* light_state_t */
+    uint8_t side_light;
+    uint8_t ped_light;            /* ped_light_t */
+    uint8_t railway_state;        /* railway_state_t */
+    uint8_t x1_link_ok;
+    uint8_t override;             /* override_t */
+    uint8_t ped_request;
+    uint8_t side_demand;
+    uint8_t reserved;
+} intersection_status_msg_t;
 
 typedef enum
 {

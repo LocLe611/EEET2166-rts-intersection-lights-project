@@ -5,8 +5,7 @@
 #include <sys/iomsg.h>
 #include <sys/neutrino.h>
 
-typedef enum
-{
+typedef enum {
     NODE_I1 = 1,
     NODE_I2,
     NODE_X1,
@@ -14,28 +13,24 @@ typedef enum
     NODE_DISPLAY
 } node_id_t;
 
-typedef enum
-{
+typedef enum {
     MODE_FIXED = 0,
     MODE_SENSOR
 } operation_mode_t;
 
-typedef enum
-{
+typedef enum {
     LIGHT_RED = 0,
     LIGHT_YELLOW,
     LIGHT_GREEN
 } light_state_t;
 
-typedef enum
-{
+typedef enum {
     INTERSECTION_NORMAL = 0,
     INTERSECTION_TRAIN_PREEMPT,
     INTERSECTION_FAULT
 } intersection_state_t;
 
-typedef enum
-{
+typedef enum {
     RAIL_CLEAR = 0,
     RAIL_APPROACHING,
     RAIL_GATES_DOWN,
@@ -43,8 +38,7 @@ typedef enum
     RAIL_FAULT
 } railway_state_t;
 
-typedef enum
-{
+typedef enum {
     GATE_UP = 0,
     GATE_LOWERING,
     GATE_DOWN,
@@ -52,14 +46,12 @@ typedef enum
     GATE_UNKNOWN
 } gate_state_t;
 
-typedef enum
-{
+typedef enum {
     TRAIN_SIGNAL_RED = 0,
     TRAIN_SIGNAL_GREEN
 } train_signal_t;
 
-typedef enum
-{
+typedef enum {
     MSG_SET_MODE = _IO_MAX + 1,
     MSG_INTERSECTION_STATUS,
     MSG_LIGHT_STATUS,
@@ -70,16 +62,14 @@ typedef enum
 	MSG_OVERRIDE
 } app_msg_type_t;
 
-typedef enum
-{
+typedef enum {
     SUBTYPE_NONE = 0,
     SUBTYPE_STATUS_UPDATE,
     SUBTYPE_FAULT_REPORT,
     SUBTYPE_OPERATOR_CLEAR
 } app_msg_subtype_t;
 
-typedef struct
-{
+typedef struct {
     uint16_t type;
     uint16_t subtype;
     uint8_t sender;
@@ -87,22 +77,19 @@ typedef struct
     uint32_t sequence;
 } msg_header_t;
 
-typedef enum
-{
+typedef enum {
     RESULT_OK = 0,
     RESULT_REJECTED,
     RESULT_INVALID,
     RESULT_BUSY
 } result_code_t;
 
-typedef struct
-{
+typedef struct {
     int32_t result;
     uint32_t sequence;
 } msg_reply_t;
 
-typedef struct
-{
+typedef struct {
     msg_header_t header;
     uint8_t railway_state;
     uint8_t gate_state;
@@ -111,8 +98,7 @@ typedef struct
     uint32_t fault_flags;
 } railway_status_msg_t;
 
-typedef struct
-{
+typedef struct {
     msg_header_t header;
     uint32_t fault_flags;
     uint8_t railway_state;
@@ -121,8 +107,7 @@ typedef struct
     uint8_t reserved;
 } fault_status_msg_t;
 
-typedef struct
-{
+typedef struct {
     msg_header_t header;
 } clear_fault_msg_t;
 
@@ -220,8 +205,8 @@ static inline uint16_t unpack_railway_sequence(int32_t value)
     return (uint16_t)((uint32_t)value & 0xFFFFu);
 }
 
-#define X1_FAULT_NONE 0u
-#define X1_FAULT_GATE_TIMEOUT (1u << 0)
-#define X1_FAULT_GATE_SENSOR (1u << 1)
+#define X1_FAULT_NONE          0u
+#define X1_FAULT_GATE_TIMEOUT  (1u << 0)
+#define X1_FAULT_GATE_SENSOR   (1u << 1)
 
 #endif

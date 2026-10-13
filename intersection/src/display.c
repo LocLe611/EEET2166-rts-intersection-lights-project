@@ -102,25 +102,75 @@ static const char *colour(uint8_t l)
 
 /* ==================================== output ==================================== */
 
+//static void print_status(const ctrl_t *c, const intersection_status_msg_t *s, bool central_up)
+//{
+//    struct timespec now;
+//    bool fault = s->intersection_state == INTERSECTION_FAULT;
+//
+//    ts_now(&now);
+//    printf("[%8.2f] %s %-11s | %s: %s%-6s" RESET " | %s: %s%-6s" RESET
+//           " | PED %-10s%s | %s%s%s | X1 %s%s | central %s\n",
+//           ts_diff_ms(&now, &g_t0) / 1000.0, c->name, phase_name(s->phase),
+//           c->main_road, colour(s->main_light), light_name(s->main_light, fault),
+//           c->side_road, colour(s->side_light), light_name(s->side_light, fault),
+//           ped_name(s->ped_light), s->ped_request ? " (req)" : "",
+//           s->mode == MODE_SENSOR ? "SENSOR" : "FIXED",
+//           s->override == OVERRIDE_MAIN ? " OVR-MAIN" : s->override == OVERRIDE_SIDE ? " OVR-SIDE"
+//                                                                                     : "",
+//           s->side_demand ? " side-waiting" : "",
+//           s->x1_link_ok ? rail_name(s->railway_state) : "NO LINK",
+//           s->intersection_state == INTERSECTION_TRAIN_PREEMPT ? " -> R3 HELD RED" : "",
+//           central_up ? "up" : "down");
+//}
+
+static const char *head_state(const head_t *h, const intersection_status_msg_t *s,
+                              bool fault, const char **col)
+{
+    switch (h->group)
+    {
+    case GRP_MAIN:
+        *col = colour(s->main_light);
+        return light_name(s->main_light, fault);
+    case GRP_SIDE:
+        *col = colour(s->side_light);
+        return light_name(s->side_light, fault);
+    default:
+        *col = colour(s->ped_light == PED_WALK ? LIGHT_GREEN : LIGHT_RED);
+        return ped_name(s->ped_light);
+    }
+}
+
 static void print_status(const ctrl_t *c, const intersection_status_msg_t *s, bool central_up)
 {
+    char buf[1024];
+    size_t n = 0;
     struct timespec now;
     bool fault = s->intersection_state == INTERSECTION_FAULT;
+    int i;
 
     ts_now(&now);
-    printf("[%8.2f] %s %-11s | %s: %s%-6s" RESET " | %s: %s%-6s" RESET
-           " | PED %-10s%s | %s%s%s | X1 %s%s | central %s\n",
-           ts_diff_ms(&now, &g_t0) / 1000.0, c->name, phase_name(s->phase),
-           c->main_road, colour(s->main_light), light_name(s->main_light, fault),
-           c->side_road, colour(s->side_light), light_name(s->side_light, fault),
-           ped_name(s->ped_light), s->ped_request ? " (req)" : "",
-           s->mode == MODE_SENSOR ? "SENSOR" : "FIXED",
-           s->override == OVERRIDE_MAIN ? " OVR-MAIN" : s->override == OVERRIDE_SIDE ? " OVR-SIDE"
-                                                                                     : "",
-           s->side_demand ? " side-waiting" : "",
-           s->x1_link_ok ? rail_name(s->railway_state) : "NO LINK",
-           s->intersection_state == INTERSECTION_TRAIN_PREEMPT ? " -> R3 HELD RED" : "",
-           central_up ? "up" : "down");
+    n += snprintf(buf + n, sizeof buf - n,
+                  "[%8.2f] %s %-11s | %s%s%s%s | X1 %s%s | central %s\n",
+                  ts_diff_ms(&now, &g_t0) / 1000.0, c->name, phase_name(s->phase),
+                  s->mode == MODE_SENSOR ? "SENSOR" : "FIXED",
+                  s->override == OVERRIDE_MAIN ? " OVR-MAIN"
+                  : s->override == OVERRIDE_SIDE ? " OVR-SIDE" : "",
+                  s->side_demand ? " side-waiting" : "",
+                  s->ped_request ? " ped-req" : "",
+                  s->x1_link_ok ? rail_name(s->railway_state) : "NO LINK",
+                  s->intersection_state == INTERSECTION_TRAIN_PREEMPT ? " -> R3 HELD RED" : "",
+                  central_up ? "up" : "down");
+
+    for (i = 0; i < c->n_heads && n < sizeof buf; i++)
+    {
+        const char *col;
+        const char *txt = head_state(&c->heads[i], s, fault, &col);
+        n += snprintf(buf + n, sizeof buf - n, "%s%-10s %s%-10s" RESET "%s",
+                      (i % 4 == 0) ? "           " : "",
+                      c->heads[i].name, col, txt,
+                      (i % 4 == 3 || i == c->n_heads - 1) ? "\n" : "  ");
+    }
+    fputs(buf, stdout);     /* one write: the uplink's messages can't split the block */
 }
 
 void *display_thread(void *arg)

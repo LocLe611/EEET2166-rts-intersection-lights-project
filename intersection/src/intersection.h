@@ -45,6 +45,13 @@ enum
 
 extern struct timespec g_t0; /* program start (set in main.c), for display timestamps */
 
+/* A physical signal head from the diagram, and which signal group drives it */
+typedef enum { GRP_MAIN, GRP_SIDE, GRP_PED } signal_group_t;
+typedef struct {
+    const char *name;        /* e.g. "I1-V-R3WE" */
+    signal_group_t group;
+} head_t;
+
 /* Everything the controller knows. Rule: only the main thread WRITES to it after start-up.
  * The other threads read only the "identity" fields, which never change. */
 typedef struct
@@ -79,6 +86,9 @@ typedef struct
     oneshot_t x1_watchdog;
     bool inject_conflict; /* demo of the safety interlock        */
     bool quit;
+
+    const head_t *heads;     /* every head at this intersection (diagram names) */
+    int n_heads;
 } ctrl_t;
 
 #endif

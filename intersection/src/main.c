@@ -49,6 +49,17 @@ static void usage(const char *prog)
     exit(EXIT_FAILURE);
 }
 
+static const head_t I1_HEADS[] = {
+    {"I1-V-R3WE", GRP_MAIN}, {"I1-V-R3EW", GRP_MAIN}, {"I1-V-R1M1", GRP_SIDE},
+    {"I1-P-WE", GRP_PED},
+};
+static const head_t I2_HEADS[] = {
+    {"I2-V-R3WE", GRP_MAIN}, {"I2-V-R3EW", GRP_MAIN},
+    {"I2-V-R2N", GRP_SIDE},  {"I2-V-R2S", GRP_SIDE},
+    {"I2-P-N", GRP_PED}, {"I2-P-S", GRP_PED}, {"I2-P-WE", GRP_PED}, {"I2-P-EW", GRP_PED},
+};
+#define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
 static void parse_args(int argc, char *argv[], ctrl_t *c, const char **service)
 {
     int id, i;
@@ -70,6 +81,7 @@ static void parse_args(int argc, char *argv[], ctrl_t *c, const char **service)
 
     if (id == 1)
     {
+        c->heads = I1_HEADS;  c->n_heads = COUNT(I1_HEADS);
         c->node = NODE_I1;
         c->name = "I1";
         *service = I1_SERVICE;
@@ -78,6 +90,7 @@ static void parse_args(int argc, char *argv[], ctrl_t *c, const char **service)
     }
     else
     {
+        c->heads = I2_HEADS;  c->n_heads = COUNT(I2_HEADS);
         c->node = NODE_I2;
         c->name = "I2";
         *service = I2_SERVICE;

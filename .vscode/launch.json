@@ -8,10 +8,10 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "d:/uni_folder/semesters_contents/2026_sem2/real-time-sys/projects/final_project/EEET2166-rts-intersection-lights-project/intersection/src",
-      "program": "d:/uni_folder/semesters_contents/2026_sem2/real-time-sys/projects/final_project/EEET2166-rts-intersection-lights-project/intersection/src/build/Debug/outDebug",
+      "cwd": "c:/Users/kyanh/EEET2166-rts-intersection-lights-project/crossing/src",
+      "program": "c:/Users/kyanh/EEET2166-rts-intersection-lights-project/crossing/src/build/Debug/outDebug",
       "MIMode": "gdb",
-      "miDebuggerPath": "C:/Users/Peter/qnx700/host/win64/x86_64/usr/bin/ntox86_64-gdb.exe",
+      "miDebuggerPath": "gdb",
       "setupCommands": [
         {
           "description": "Enable pretty-printing for gdb",

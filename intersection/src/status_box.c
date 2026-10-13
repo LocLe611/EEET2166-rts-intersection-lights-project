@@ -9,7 +9,8 @@
 #include <pthread.h>
 
 #include "status_box.h"
-#include "rtutil.h"
+
+#include "rutil.h"
 
 static struct
 {

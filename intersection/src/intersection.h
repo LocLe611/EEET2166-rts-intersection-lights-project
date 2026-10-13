@@ -13,7 +13,8 @@
 
 #include "config.h"  /* common/: hostnames, service names, timeouts   */
 #include "message.h" /* common/: message structs, enums, railway pulse */
-#include "rtutil.h"
+
+#include "rutil.h"
 #include "timing.h"
 
 /* Thread priorities (bigger = more urgent). RAILWAY_PULSE_PRIORITY (config.h) is above all

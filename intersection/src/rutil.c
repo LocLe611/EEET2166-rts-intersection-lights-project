@@ -1,6 +1,8 @@
 /*
  * rtutil.c — real-time helpers (see rtutil.h)
  */
+#include "rutil.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -8,7 +10,6 @@
 #include <sched.h>
 #include <sys/neutrino.h>
 
-#include "rtutil.h"
 
 #define TIMER_TOLERANCE_MS 2 /* see oneshot_is_due() */
 

@@ -1,17 +1,15 @@
-/*
- * events.c — what each incoming pulse or message does to the controller's inputs.
- * The state machine itself (fsm.c) decides what the lights do about it.
- */
+
+#include <stdio.h>
+
 #include "events.h"
 #include "fsm.h"
 
-/* ===================================== pulses ===================================== */
-
-/* PULSE_RAILWAY_EVENT from X1. Every one of them is also a heartbeat. */
 static void on_railway_pulse(ctrl_t *c, int32_t value)
 {
+    bool was_up = c->x1_link_ok;
+
     if (unpack_railway_sender(value) != NODE_X1)
-        return; /* not from X1: ignore */
+        return;
 
     switch (unpack_railway_event(value))
     {
@@ -26,20 +24,26 @@ static void on_railway_pulse(ctrl_t *c, int32_t value)
         break;
     default:
         c->rail = RAIL_FAULT;
-        break; /* RAIL_EVENT_FAULT, or garbage:
-                  uncertain = unsafe */
+        break;
     }
-    /* unpack_railway_sequence(value) is available if you want to log missed events. Each
-     * pulse carries X1's whole current state, so a missed one is corrected by the next. */
+    
     c->x1_link_ok = true;
     if (!c->standalone)
         oneshot_arm(&c->x1_watchdog, X1_WATCHDOG_MS);
+
+    if (!was_up)
+        printf("[%s] X1 link restored.\n", c->name);
+
     fsm_rail_changed(c);
 }
 
 static void on_x1_watchdog(ctrl_t *c)
 {
-    c->x1_link_ok = false; /* heard nothing from X1: assume a train (fail-safe) */
+    if (!c->x1_link_ok)
+        return;
+
+    c->x1_link_ok = false;
+    printf("[%s] X1 heartbeat lost - R3 held RED.\n", c->name);
     fsm_rail_changed(c);
 }
 
@@ -49,7 +53,7 @@ static void on_key(ctrl_t *c, int key)
     {
     case KEY_PED:
         if (c->phase != PHASE_PED_WALK && c->phase != PHASE_PED_CLEAR)
-            c->ped_latched = true; /* latch: repeated presses have no extra effect */
+            c->ped_latched = true;
         break;
     case KEY_SIDE_VEHICLE:
         c->side_demand = true;
@@ -71,12 +75,9 @@ void events_handle_pulse(ctrl_t *c, const struct _pulse *p)
     switch (p->code)
     {
     case _PULSE_CODE_DISCONNECT:
-        /* A client (central, X1, ...) closed its connection or died. Release its server
-         * connection and KEEP RUNNING — the lab template leaves its loop here; an
-         * intersection must never stop because another node went away. */
         ConnectDetach(p->scoid);
         break;
-    case _PULSE_CODE_UNBLOCK: /* we always reply at once, nothing to do */
+    case _PULSE_CODE_UNBLOCK:
         break;
     case PULSE_RAILWAY_EVENT:
         on_railway_pulse(c, p->value.sival_int);
@@ -92,12 +93,10 @@ void events_handle_pulse(ctrl_t *c, const struct _pulse *p)
     case PC_KEY:
         on_key(c, p->value.sival_int);
         break;
-    default: /* e.g. _PULSE_CODE_COIDDEATH: uplink handles it */
+    default:
         break;
     }
 }
-
-/* ==================================== messages ==================================== */
 
 int32_t events_handle_message(ctrl_t *c, const void *msg, int len)
 {
@@ -115,7 +114,7 @@ int32_t events_handle_message(ctrl_t *c, const void *msg, int len)
             return RESULT_INVALID;
         if (m->mode != MODE_FIXED && m->mode != MODE_SENSOR)
             return RESULT_INVALID;
-        c->pending_mode = (operation_mode_t)m->mode; /* applied at the next all-red */
+        c->pending_mode = (operation_mode_t)m->mode;
         c->mode_change_pending = (c->pending_mode != c->mode);
         fsm_refresh(c);
         return RESULT_OK;
@@ -137,6 +136,6 @@ int32_t events_handle_message(ctrl_t *c, const void *msg, int len)
         fsm_clear_fault(c);
         return RESULT_OK;
     default:
-        return -1; /* not for this node */
+        return -1;
     }
 }

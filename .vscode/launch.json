@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/kyanh/EEET2166-rts-intersection-lights-project/crossing/src",
-      "program": "c:/Users/kyanh/EEET2166-rts-intersection-lights-project/crossing/src/build/Debug/outDebug",
+      "cwd": "c:/Users/kyanh/EEET2166-rts-intersection-lights-project/central/src",
+      "program": "c:/Users/kyanh/EEET2166-rts-intersection-lights-project/central/src/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

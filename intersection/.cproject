@@ -30,13 +30,13 @@
 							<tool id="com.qnx.qcc.tool.compiler.1363580418" name="QCC Compiler" superClass="com.qnx.qcc.tool.compiler">
 								<option id="com.qnx.qcc.option.compiler.optlevel.1785310995" name="Optimization Level" superClass="com.qnx.qcc.option.compiler.optlevel" value="com.qnx.qcc.option.compiler.optlevel.0" valueType="enumerated"/>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.compiler.includePath.1832925691" superClass="com.qnx.qcc.option.compiler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.compiler.763688335" superClass="com.qnx.qcc.inputType.compiler"/>
 							</tool>
 							<tool id="com.qnx.qcc.tool.assembler.1320759581" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.assembler.includePath.1400554749" superClass="com.qnx.qcc.option.assembler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.assembler.186801384" superClass="com.qnx.qcc.inputType.assembler"/>
 							</tool>
@@ -77,13 +77,13 @@
 							<tool id="com.qnx.qcc.tool.compiler.105578595" name="QCC Compiler" superClass="com.qnx.qcc.tool.compiler">
 								<option id="com.qnx.qcc.option.compiler.optlevel.1110829091" name="Optimization Level" superClass="com.qnx.qcc.option.compiler.optlevel" value="com.qnx.qcc.option.compiler.optlevel.0" valueType="enumerated"/>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.compiler.includePath.401895516" superClass="com.qnx.qcc.option.compiler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.compiler.386062353" superClass="com.qnx.qcc.inputType.compiler"/>
 							</tool>
 							<tool id="com.qnx.qcc.tool.assembler.787863133" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.assembler.includePath.889256021" superClass="com.qnx.qcc.option.assembler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.assembler.1012297116" superClass="com.qnx.qcc.inputType.assembler"/>
 							</tool>
@@ -124,13 +124,13 @@
 							<tool id="com.qnx.qcc.tool.compiler.1077189059" name="QCC Compiler" superClass="com.qnx.qcc.tool.compiler">
 								<option id="com.qnx.qcc.option.compiler.optlevel.254912943" name="Optimization Level" superClass="com.qnx.qcc.option.compiler.optlevel" value="com.qnx.qcc.option.compiler.optlevel.0" valueType="enumerated"/>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.compiler.includePath.437758510" superClass="com.qnx.qcc.option.compiler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.compiler.1634079090" superClass="com.qnx.qcc.inputType.compiler"/>
 							</tool>
 							<tool id="com.qnx.qcc.tool.assembler.1279490183" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.assembler.includePath.208882685" superClass="com.qnx.qcc.option.assembler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.assembler.1387656887" superClass="com.qnx.qcc.inputType.assembler"/>
 							</tool>
@@ -171,13 +171,13 @@
 							<tool id="com.qnx.qcc.tool.compiler.1415236619" name="QCC Compiler" superClass="com.qnx.qcc.tool.compiler">
 								<option id="com.qnx.qcc.option.compiler.optlevel.675594005" name="Optimization Level" superClass="com.qnx.qcc.option.compiler.optlevel" value="com.qnx.qcc.option.compiler.optlevel.0" valueType="enumerated"/>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.compiler.includePath.1881259051" superClass="com.qnx.qcc.option.compiler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.compiler.1131499446" superClass="com.qnx.qcc.inputType.compiler"/>
 							</tool>
 							<tool id="com.qnx.qcc.tool.assembler.1337528898" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.qnx.qcc.option.assembler.includePath.1134211948" superClass="com.qnx.qcc.option.assembler.includePath" valueType="includePath">
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/EEET2166-rts-intersection-lights-project/common}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;../common&quot;"/>
 								</option>
 								<inputType id="com.qnx.qcc.inputType.assembler.334179059" superClass="com.qnx.qcc.inputType.assembler"/>
 							</tool>

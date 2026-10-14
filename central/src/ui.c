@@ -1,404 +1,439 @@
-/* ui.c — operator console. Two threads:
- *   dashboard_thread  the ONLY thread that draws. Redraws when the node table changes
- *                     (condition variable) or once a second. Fits an 80x25 console.
- *   menu_thread       reads single keys (raw terminal), drives the menu, queues
- *                     commands. Never prints: it sets the prompt and asks for a redraw.
- * stdout and the prompt text are protected by out_m. */
-#include <signal.h>
-#include <stdarg.h>
+#include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 #include "central.h"
+#include "console.h"
 
-static pthread_mutex_t out_m = PTHREAD_MUTEX_INITIALIZER;
-static char prompt[160] = "Select an option.";
-
-/* ---------- enum -> text (switch on names, so enum order never matters) ---------- */
 const char *node_str(int n)
 {
     switch (n) {
-    case NODE_I1: return "I1";  case NODE_I2: return "I2";  case NODE_X1: return "X1";
-    case NODE_CENTRAL: return "CENTRAL";  case NODE_DISPLAY: return "DISPLAY";
+    case NODE_I1: return "I1";
+    case NODE_I2: return "I2";
+    case NODE_X1: return "X1";
+    case NODE_CENTRAL: return "CENTRAL";
+    case NODE_DISPLAY: return "DISPLAY";
     default: return "?";
     }
 }
-const char *side_road(int n) { return n == NODE_I1 ? "R1" : n == NODE_I2 ? "R2" : "?"; }
+
+const char *side_road(int n)
+{
+    return n == NODE_I1 ? "R1" : n == NODE_I2 ? "R2" : "?";
+}
+
 const char *phase_str(int p)
 {
     switch (p) {
-    case PHASE_ALL_RED:     return "ALL_RED";
-    case PHASE_MAIN_GREEN:  return "MAIN_GREEN";
+    case PHASE_ALL_RED: return "ALL_RED";
+    case PHASE_MAIN_GREEN: return "MAIN_GREEN";
     case PHASE_MAIN_YELLOW: return "MAIN_YELLOW";
-    case PHASE_SIDE_GREEN:  return "SIDE_GREEN";
+    case PHASE_SIDE_GREEN: return "SIDE_GREEN";
     case PHASE_SIDE_YELLOW: return "SIDE_YELLOW";
-    case PHASE_PED_WALK:    return "PED_WALK";
-    case PHASE_PED_CLEAR:   return "PED_CLEAR";
-    case PHASE_FAULT:       return "FAULT";
-    default:                return "?";
+    case PHASE_PED_WALK: return "PED_WALK";
+    case PHASE_PED_CLEAR: return "PED_CLEAR";
+    case PHASE_FAULT: return "FAULT";
+    default: return "?";
     }
 }
+
 const char *light_str(int l)
 {
-    switch (l) { case LIGHT_RED: return "R"; case LIGHT_YELLOW: return "Y"; case LIGHT_GREEN: return "G"; default: return "?"; }
+    switch (l) {
+    case LIGHT_RED: return "RED";
+    case LIGHT_YELLOW: return "YELLOW";
+    case LIGHT_GREEN: return "GREEN";
+    default: return "?";
+    }
 }
+
 const char *ped_str(int p)
 {
-    switch (p) { case PED_DONT_WALK: return "DONT"; case PED_WALK: return "WALK"; case PED_FLASHING: return "FLSH"; default: return "?"; }
+    switch (p) {
+    case PED_DONT_WALK: return "DONT_WALK";
+    case PED_WALK: return "WALK";
+    case PED_FLASHING: return "FLASHING";
+    default: return "?";
+    }
 }
+
 const char *mode_str(int m)
 {
-    switch (m) { case MODE_FIXED: return "FIX"; case MODE_SENSOR: return "SEN"; default: return "?"; }
+    switch (m) {
+    case MODE_FIXED: return "FIXED";
+    case MODE_SENSOR: return "SENSOR";
+    default: return "?";
+    }
 }
+
 const char *override_str(int o)
 {
-    switch (o) { case OVERRIDE_NONE: return "none"; case OVERRIDE_MAIN: return "R3"; case OVERRIDE_SIDE: return "side"; default: return "?"; }
+    switch (o) {
+    case OVERRIDE_NONE: return "NONE";
+    case OVERRIDE_MAIN: return "R3/MAIN";
+    case OVERRIDE_SIDE: return "SIDE";
+    default: return "?";
+    }
 }
+
 const char *istate_str(int s)
 {
     switch (s) {
-    case INTERSECTION_NORMAL: return "NORM"; case INTERSECTION_TRAIN_PREEMPT: return "TRAIN";
-    case INTERSECTION_FAULT: return "FAULT"; default: return "?";
+    case INTERSECTION_NORMAL: return "NORMAL";
+    case INTERSECTION_TRAIN_PREEMPT: return "TRAIN_PREEMPT";
+    case INTERSECTION_FAULT: return "FAULT";
+    default: return "?";
     }
 }
+
 const char *rail_str(int r)
 {
     switch (r) {
-    case RAIL_CLEAR: return "CLEAR"; case RAIL_APPROACHING: return "APPROACHING";
-    case RAIL_GATES_DOWN: return "GATES_DOWN"; case RAIL_CROSSING: return "CROSSING";
-    case RAIL_FAULT: return "FAULT"; default: return "?";
+    case RAIL_CLEAR: return "CLEAR";
+    case RAIL_APPROACHING: return "APPROACHING";
+    case RAIL_GATES_DOWN: return "GATES_DOWN";
+    case RAIL_CROSSING: return "CROSSING";
+    case RAIL_FAULT: return "FAULT";
+    default: return "?";
     }
 }
+
 const char *gate_str(int g)
 {
     switch (g) {
-    case GATE_UP: return "UP"; case GATE_LOWERING: return "LOWERING"; case GATE_DOWN: return "DOWN";
-    case GATE_RAISING: return "RAISING"; case GATE_UNKNOWN: return "UNKNOWN"; default: return "?";
+    case GATE_UP: return "UP";
+    case GATE_LOWERING: return "LOWERING";
+    case GATE_DOWN: return "DOWN";
+    case GATE_RAISING: return "RAISING";
+    case GATE_UNKNOWN: return "UNKNOWN";
+    default: return "?";
     }
 }
+
 const char *msgtype_str(int t)
 {
-    switch (t) { case MSG_SET_MODE: return "MODE"; case MSG_OVERRIDE: return "OVR"; case MSG_CLEAR_FAULT: return "CLR"; default: return "?"; }
+    switch (t) {
+    case MSG_SET_MODE: return "SET_MODE";
+    case MSG_OVERRIDE: return "OVERRIDE";
+    case MSG_CLEAR_FAULT: return "CLEAR_FAULT";
+    default: return "?";
+    }
 }
+
 const char *result_str(int r)
 {
     switch (r) {
-    case RESULT_OK: return "OK"; case RESULT_REJECTED: return "REJECTED";
-    case RESULT_INVALID: return "INVALID"; case RESULT_BUSY: return "BUSY"; default: return "?";
+    case RESULT_OK: return "OK";
+    case RESULT_REJECTED: return "REJECTED";
+    case RESULT_INVALID: return "INVALID";
+    case RESULT_BUSY: return "BUSY";
+    default: return "?";
     }
 }
+
 static const char *cmdres_str(int r)
 {
     switch (r) {
-    case CMDRES_PENDING: return "PEND"; case CMDRES_ACK: return "ACK";
-    case CMDRES_REJECTED: return "REJ"; case CMDRES_RETRY: return "RETRY";
-    case CMDRES_WAIT: return "WAIT"; default: return "";
+    case CMDRES_PENDING: return "PENDING";
+    case CMDRES_ACK: return "ACK";
+    case CMDRES_REJECTED: return "REJECTED";
+    case CMDRES_RETRY: return "RETRY";
+    default: return "NONE";
     }
 }
 
-/* ---------- screen building ---------- */
-typedef struct { char buf[6144]; size_t len; } sb_t;
-static void sb(sb_t *s, const char *fmt, ...)
+static void print_link(link_t link)
 {
-    if (s->len >= sizeof s->buf - 1) return;
-    va_list ap;
-    va_start(ap, fmt);
-    int k = vsnprintf(s->buf + s->len, sizeof s->buf - s->len, fmt, ap);
-    va_end(ap);
-    if (k < 0) return;
-    s->len += (size_t)k;
-    if (s->len > sizeof s->buf - 1) s->len = sizeof s->buf - 1;
-}
-#define EOL   "\033[K\n"            /* clear to end of line, newline */
-#define RED   "\033[31m"
-#define GREEN "\033[32m"
-#define NORM  "\033[0m"
-
-/* "0.4s" / "42s" / "3m" since the node's last message, "-" if never heard from */
-static void fmt_seen(char *b, size_t n, const node_info_t *ni, uint64_t now)
-{
-    if (!ni->have_data) { snprintf(b, n, "-"); return; }
-    unsigned long long age = now - ni->last_seen_ms;
-    if (age < 10000)       snprintf(b, n, "%llu.%llus", age / 1000, age % 1000 / 100);
-    else if (age < 600000) snprintf(b, n, "%llus", age / 1000);
-    else                   snprintf(b, n, "%llum", age / 60000);
+    if (link == LINK_ONLINE)
+        printf(UI_GREEN "ONLINE" UI_RESET);
+    else
+        printf(UI_RED "OFFLINE" UI_RESET);
 }
 
-static void fmt_lastcmd(char *b, size_t n, const node_info_t *ni)
+static void print_light(int light)
 {
-    if (!ni->last_cmd_seq) { snprintf(b, n, "-"); return; }
-    snprintf(b, n, "#%u %s %s", ni->last_cmd_seq, msgtype_str(ni->last_cmd_type), cmdres_str(ni->last_cmd_res));
+    const char *colour = light == LIGHT_GREEN ? UI_GREEN :
+                         light == LIGHT_YELLOW ? UI_YELLOW : UI_RED;
+    printf("%s%s%s", colour, light_str(light), UI_RESET);
 }
 
-/* Columns (79 wide): Nd Link Seen State Mode Phase R3 Side Ped Request Last-cmd */
-static void row_intersection(sb_t *s, int n, const node_info_t *ni, uint64_t now)
+static void print_ped(int ped)
 {
-    char seen[12], last[24], req[12], side[8];
-    fmt_seen(seen, sizeof seen, ni, now);
-    fmt_lastcmd(last, sizeof last, ni);
-    snprintf(req, sizeof req, "%s%s%s", mode_str(ni->desired_mode),
-             ni->desired_override == OVERRIDE_NONE ? "" : "+",
-             ni->desired_override == OVERRIDE_NONE ? "" : override_str(ni->desired_override));
+    const char *colour = ped == PED_WALK ? UI_GREEN :
+                         ped == PED_FLASHING ? UI_YELLOW : UI_RED;
+    printf("%s%s%s", colour, ped_str(ped), UI_RESET);
+}
 
-    if (ni->link == LINK_OFFLINE || !ni->have_data) {
-        sb(s, " %-3s " RED "%-7s" NORM " %-5s %-5s %-3s %-11s %-2s %-4s %-4s %-7s %s" EOL,
-           node_str(n), ni->have_data ? "OFFLINE" : "NO DATA", seen, "-", "-", "-", "-", "-", "-", req, last);
+static void print_last_cmd(const node_info_t *n)
+{
+    if (n->last_cmd_seq == 0) {
+        printf("none");
         return;
     }
-    const intersection_status_msg_t *st = &ni->ist;
-    snprintf(side, sizeof side, "%s:%s", side_road(n), light_str(st->side_light));
-    int fault = st->intersection_state == INTERSECTION_FAULT;
-    sb(s, " %-3s " GREEN "%-7s" NORM " %-5s %s%-5s" NORM " %-3s %-11s %-2s %-4s %-4s %-7s %s" EOL,
-       node_str(n), "ONLINE", seen, fault ? RED : NORM, istate_str(st->intersection_state),
-       mode_str(st->mode), phase_str(st->phase), fault ? "FL" : light_str(st->main_light),
-       side, ped_str(st->ped_light), req, last);
+    printf("#%u %s %s", (unsigned)n->last_cmd_seq,
+           msgtype_str(n->last_cmd_type), cmdres_str(n->last_cmd_res));
 }
 
-static void row_x1(sb_t *s, const node_info_t *x, uint64_t now)
+static void print_intersection(int id, const node_info_t *n)
 {
-    char seen[12], last[24];
-    fmt_seen(seen, sizeof seen, x, now);
-    fmt_lastcmd(last, sizeof last, x);
+    printf("\n%s  [", node_str(id));
+    print_link(n->link);
+    printf("]\n");
+
+    if (!n->have_data) {
+        printf("  Status   : waiting for first update\n");
+        return;
+    }
+
+    printf("  State    : %s | Mode %s | Phase %s\n",
+           istate_str(n->ist.intersection_state),
+           mode_str(n->ist.mode), phase_str(n->ist.phase));
+    printf("  Signals  : R3=");
+    print_light(n->ist.main_light);
+    printf(" | %s=", side_road(id));
+    print_light(n->ist.side_light);
+    printf(" | Ped=");
+    print_ped(n->ist.ped_light);
+    printf("\n");
+    printf("  Railway  : %s | X1 link %s | Override %s\n",
+           rail_str(n->ist.railway_state),
+           n->ist.x1_link_ok ? "OK" : "LOST",
+           override_str(n->ist.override));
+    printf("  Demand   : pedestrian=%s | side-road=%s\n",
+           n->ist.ped_request ? "YES" : "NO",
+           n->ist.side_demand ? "YES" : "NO");
+    printf("  Command  : ");
+    print_last_cmd(n);
+    printf("\n");
+}
+
+static void print_x1(const node_info_t *x)
+{
+    printf("\nX1  [");
+    print_link(x->link);
+    printf("]\n");
+
     if (!x->have_data) {
-        sb(s, " X1  " RED "%-7s" NORM " %-5s railway state UNKNOWN            %s" EOL, "NO DATA", seen, last);
+        printf("  Status   : waiting for first update\n");
         return;
     }
-    const railway_status_msg_t *r = &x->rail;
-    sb(s, " X1  %s%-7s" NORM " %-5s %s%-11s" NORM " gate %-8s sig %-5s lights %-3s flt 0x%X" EOL,
-       x->link == LINK_ONLINE ? GREEN : RED, x->link == LINK_ONLINE ? "ONLINE" : "OFFLINE", seen,
-       r->railway_state == RAIL_FAULT ? RED : NORM, rail_str(r->railway_state), gate_str(r->gate_state),
-       r->train_signal == TRAIN_SIGNAL_GREEN ? "GREEN" : "RED", r->warning_lights_on ? "ON" : "OFF",
-       (unsigned)r->fault_flags);
-    sb(s, "     last cmd: %s" EOL, last);
+
+    printf("  Railway  : %s | Gate %s | Warning %s\n",
+           rail_str(x->rail.railway_state), gate_str(x->rail.gate_state),
+           x->rail.warning_lights_on ? "ON" : "OFF");
+    printf("  Train    : ");
+    if (x->rail.train_signal == TRAIN_SIGNAL_GREEN)
+        printf(UI_GREEN "GREEN" UI_RESET);
+    else
+        printf(UI_RED "RED" UI_RESET);
+    printf(" | Fault flags 0x%08X\n", (unsigned)x->rail.fault_flags);
 }
 
-static void render(sb_t *s)
+static void print_status(void)
 {
-    node_info_t n[NODE_SLOTS];
-    unsigned alarms, m; int sched, pat;
-    uint64_t now = now_ms();
+    node_info_t copy[NODE_SLOTS];
+    unsigned alarms;
+    unsigned sim_min;
+    int schedule;
+    int pattern;
 
-    /* Copy under the read lock, format outside it: short critical section. */
     pthread_rwlock_rdlock(&g_c.lock);
-    memcpy(n, g_c.node, sizeof n);
-    alarms = g_c.alarms; sched = g_c.sched_enabled; m = g_c.sim_min; pat = g_c.pattern;
+    memcpy(copy, g_c.node, sizeof copy);
+    alarms = g_c.alarms;
+    sim_min = g_c.sim_min;
+    schedule = g_c.sched_enabled;
+    pattern = g_c.pattern;
     pthread_rwlock_unlock(&g_c.lock);
 
-    sb(s, "\033[H");
-    sb(s, "=== CENTRAL CONTROL ===  sim %02u:%02u  %-8s  schedule %s" EOL,
-       m / 60, m % 60, pattern_str(pat), sched ? "ON" : "OFF");
-    sb(s, EOL " %-3s %-7s %-5s %-5s %-3s %-11s %-2s %-4s %-4s %-7s %s" EOL,
-       "Nd", "Link", "Seen", "State", "Mod", "Phase", "R3", "Side", "Ped", "Request", "Last cmd");
-    row_intersection(s, NODE_I1, &n[NODE_I1], now);
-    row_intersection(s, NODE_I2, &n[NODE_I2], now);
-    row_x1(s, &n[NODE_X1], now);
+    printf("\n%s\n", UI_RULE);
+    printf(" SYSTEM STATUS | %02u:%02u | %s | Schedule %s\n",
+           sim_min / 60, sim_min % 60,
+           pattern_str(pattern), schedule ? "ON" : "OFF");
+    if (alarms)
+        printf(UI_RED " ACTIVE FAULT MASK: 0x%X\n" UI_RESET, alarms);
 
-    if (alarms) {
-        char who[40] = "";
-        for (int i = NODE_I1; i <= NODE_X1; i++)
-            if (alarms & (1u << i)) { strcat(who, " "); strcat(who, node_str(i)); }
-        sb(s, "\033[41;97m *** ALARM: FAULT at%s - [3] clear fault, [a] acknowledge *** " NORM EOL, who);
-    } else {
-        sb(s, EOL);
-    }
-    sb(s, "-------------------------------------------------------------------------------" EOL);
-    sb(s, " [1] Mode  [2] Override  [3] Clear fault  [4] Schedule on/off  [+] Skip 1 hour" EOL);
-    sb(s, " [a] Acknowledge alarm  [q] Quit   (Esc cancels)" EOL);
-    sb(s, "-------------------------------------------------------------------------------" EOL);
-    sb(s, " Recent events (full log: %s):" EOL, CENTRAL_LOG_PATH);
+    print_intersection(NODE_I1, &copy[NODE_I1]);
+    print_intersection(NODE_I2, &copy[NODE_I2]);
+    print_x1(&copy[NODE_X1]);
 
-    char ev[LOG_RECENT][LOG_LINE];
-    int k = log_recent(ev, LOG_RECENT);
-    for (int i = 0; i < LOG_RECENT; i++) sb(s, "  %.76s" EOL, i < k ? ev[i] : "");   /* never wrap */
-    sb(s, EOL);
+    printf("\nDisplay [");
+    print_link(copy[NODE_DISPLAY].link);
+    printf("]\n%s\n", UI_RULE);
 }
 
-void *dashboard_thread(void *arg)
-{
-    (void)arg;
-    unsigned seen = 0;
-    sb_t *s = malloc(sizeof *s);
-    if (!s) return NULL;
-
-    pthread_mutex_lock(&out_m);
-    fputs("\033[2J", stdout);                 /* clear once; redraws overwrite in place */
-    pthread_mutex_unlock(&out_m);
-
-    for (;;) {
-        seen = table_wait_change(seen, 1000);
-        s->len = 0;
-        render(s);
-        pthread_mutex_lock(&out_m);
-        fwrite(s->buf, 1, s->len, stdout);
-        printf(" > %.75s\033[K\033[J", prompt);
-        fflush(stdout);
-        pthread_mutex_unlock(&out_m);
-    }
-    return NULL;
-}
-
-/* ---------- menu ---------- */
-static struct termios saved_tio;
-static int raw_on;
-
-static void restore_terminal(void)
-{
-    if (raw_on) { tcsetattr(STDIN_FILENO, TCSANOW, &saved_tio); raw_on = 0; }
-    fputs("\033[0m\n", stdout);
-}
-static void on_signal(int sig) { restore_terminal(); signal(sig, SIG_DFL); raise(sig); }
-
-static void set_prompt(const char *fmt, ...)
-{
-    va_list ap;
-    pthread_mutex_lock(&out_m);
-    va_start(ap, fmt);
-    vsnprintf(prompt, sizeof prompt, fmt, ap);
-    va_end(ap);
-    pthread_mutex_unlock(&out_m);
-    table_changed();                          /* ask the dashboard to redraw */
-}
-
-/* The two steps every command takes: record what we want (for resync), then queue it. */
 static void do_mode(node_id_t n, operation_mode_t mode)
 {
+    cmd_t c;
+
     pthread_rwlock_wrlock(&g_c.lock);
     g_c.node[n].desired_mode = mode;
-    g_c.node[n].sched_paused = 1;             /* operator takes over this intersection */
+    g_c.node[n].policy_valid = 1;
+    g_c.node[n].sched_paused = 1;
     pthread_rwlock_unlock(&g_c.lock);
-    log_msg("operator: %s mode %s (schedule paused for %s)", node_str(n),
-            mode == MODE_FIXED ? "FIXED" : "SENSOR", node_str(n));
-    cmd_t c;
+
     build_set_mode(&c, mode);
+    log_msg("Operator: %s mode -> %s", node_str(n), mode_str(mode));
     cmdq_push(n, &c);
 }
 
 static void do_override(node_id_t n, override_t ovr)
 {
+    cmd_t c;
+
     pthread_rwlock_wrlock(&g_c.lock);
     g_c.node[n].desired_override = ovr;
+    g_c.node[n].policy_valid = 1;
+    if (ovr == OVERRIDE_NONE && g_c.sched_enabled)
+        g_c.pattern = -1;
     pthread_rwlock_unlock(&g_c.lock);
-    log_msg("operator: %s override %s", node_str(n), override_str(ovr));
-    cmd_t c;
+
     build_override(&c, ovr);
+    log_msg("Operator: %s override -> %s", node_str(n), override_str(ovr));
     cmdq_push(n, &c);
 }
 
 static void do_clear_fault(node_id_t n)
 {
-    log_msg("operator: clear fault at %s", node_str(n));
     cmd_t c;
     build_clear_fault(&c);
+    log_msg("Operator: clear fault -> %s", node_str(n));
     cmdq_push(n, &c);
 }
 
-enum { M_TOP, M_NODE, M_MODE, M_OVR, M_FAULT };
-enum { A_MODE, A_OVR };
+static int read_choice(const char *prompt, char *out)
+{
+    char line[64];
+    size_t i;
+
+    printf("%s", prompt);
+    fflush(stdout);
+    if (fgets(line, sizeof line, stdin) == NULL)
+        return -1;
+
+    for (i = 0; line[i] != '\0'; ++i) {
+        if (!isspace((unsigned char)line[i])) {
+            *out = (char)tolower((unsigned char)line[i]);
+            return 0;
+        }
+    }
+
+    *out = '\0';
+    return 0;
+}
+
+static int choose_intersections(void)
+{
+    char c;
+
+    if (read_choice("Target [1] I1  [2] I2  [b] both: ", &c) < 0)
+        return 0;
+    if (c == '1') return 1;
+    if (c == '2') return 2;
+    if (c == 'b') return 3;
+    printf("Invalid target.\n");
+    return 0;
+}
+
+static void print_menu(void)
+{
+    printf("\nCENTRAL COMMANDS\n");
+    printf("  1  Set FIXED / SENSOR mode\n");
+    printf("  2  Set / clear intersection override\n");
+    printf("  3  Clear controller fault\n");
+    printf("  4  Toggle automatic time-of-day schedule\n");
+    printf("  5  Show system status\n");
+    printf("  +  Advance simulated time by one hour\n");
+    printf("  q  Quit\n");
+}
 
 void *menu_thread(void *arg)
 {
     (void)arg;
-    if (tcgetattr(STDIN_FILENO, &saved_tio) == 0) {
-        struct termios raw = saved_tio;
-        raw.c_lflag &= ~(ICANON | ECHO);      /* one key at a time; keep OPOST so \n works */
-        raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0;
-        if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0) raw_on = 1;
-    }
-    atexit(restore_terminal);
-    signal(SIGINT, on_signal);
-    signal(SIGTERM, on_signal);
 
-    int state = M_TOP, action = A_MODE, mask = 0;
-    static const char *pick = "Which intersection? [1] I1  [2] I2  [b] both";
+    printf(" Automatic schedule starts OFF.\n");
+    print_menu();
 
     for (;;) {
-        unsigned char ch;
-        ssize_t r = read(STDIN_FILENO, &ch, 1);
-        if (r == 0) {                          /* no keyboard (e.g. run in background) */
-            log_msg("menu: stdin closed - operator menu disabled, monitoring continues");
-            for (;;) pause();                  /* block for good; don't spin */
-        }
-        if (r != 1) continue;
-        if (ch == 27) { state = M_TOP; set_prompt("Cancelled."); continue; }   /* Esc */
+        char ch;
 
-        switch (state) {
-        case M_TOP:
-            switch (ch) {
-            case '1': action = A_MODE; state = M_NODE; set_prompt("Set mode. %s", pick); break;
-            case '2': action = A_OVR;  state = M_NODE; set_prompt("Override. %s", pick); break;
-            case '3': state = M_FAULT; set_prompt("Clear fault at? [1] I1  [2] I2  [x] X1"); break;
-            case '4': {
-                int on;
-                pthread_rwlock_wrlock(&g_c.lock);
-                on = g_c.sched_enabled = !g_c.sched_enabled;
-                if (on) {                      /* resume: re-apply the pattern on the next tick */
-                    g_c.pattern = -1;
-                    g_c.node[NODE_I1].sched_paused = g_c.node[NODE_I2].sched_paused = 0;
-                }
-                pthread_rwlock_unlock(&g_c.lock);
-                log_msg("operator: schedule %s", on ? "ON (manual pauses cleared)" : "OFF");
-                set_prompt("Schedule %s.", on ? "ON" : "OFF");
-                break;
-            }
-            case '+':
-                pthread_rwlock_wrlock(&g_c.lock);
-                g_c.sim_min = (g_c.sim_min + 60) % (24 * 60);
-                pthread_rwlock_unlock(&g_c.lock);
-                set_prompt("Skipped 1 sim hour.");
-                break;
-            case 'a': case 'A':
-                pthread_rwlock_wrlock(&g_c.lock);
-                g_c.alarms = 0;
-                pthread_rwlock_unlock(&g_c.lock);
-                log_msg("operator: alarm acknowledged");
-                set_prompt("Alarm acknowledged.");
-                break;
-            case 'q': case 'Q':
-                log_msg("operator: central shutting down");
-                exit(0);                       /* atexit restores the terminal */
-            default: break;
-            }
-            break;
-
-        case M_NODE:
-            if      (ch == '1') mask = 1;
-            else if (ch == '2') mask = 2;
-            else if (ch == 'b' || ch == 'B') mask = 3;
-            else break;
-            if (action == A_MODE) { state = M_MODE; set_prompt("Mode? [f] FIXED  [s] SENSOR"); }
-            else { state = M_OVR; set_prompt("Green to? [m] R3 (main)  [s] side road  [n] none (clear)"); }
-            break;
-
-        case M_MODE:
-            if (ch != 'f' && ch != 's') break;
-            if (mask & 1) do_mode(NODE_I1, ch == 'f' ? MODE_FIXED : MODE_SENSOR);
-            if (mask & 2) do_mode(NODE_I2, ch == 'f' ? MODE_FIXED : MODE_SENSOR);
-            state = M_TOP; set_prompt("Mode change sent (applies at the next all-red).");
-            break;
-
-        case M_OVR: {
-            override_t o;
-            if      (ch == 'm') o = OVERRIDE_MAIN;
-            else if (ch == 's') o = OVERRIDE_SIDE;
-            else if (ch == 'n') o = OVERRIDE_NONE;
-            else break;
-            if (mask & 1) do_override(NODE_I1, o);
-            if (mask & 2) do_override(NODE_I2, o);
-            state = M_TOP;
-            set_prompt(o == OVERRIDE_NONE ? "Override cleared." : "Override sent - stays until [2] ... [n].");
-            break;
+        if (read_choice("\nCentral> ", &ch) < 0) {
+            log_msg("Console closed; Central shutting down");
+            return NULL;
         }
 
-        case M_FAULT:
-            if      (ch == '1') do_clear_fault(NODE_I1);
-            else if (ch == '2') do_clear_fault(NODE_I2);
-            else if (ch == 'x' || ch == 'X') do_clear_fault(NODE_X1);
-            else break;
-            state = M_TOP; set_prompt("Clear-fault request sent.");
-            break;
+        if (ch == '1') {
+            int mask = choose_intersections();
+            char m;
+            operation_mode_t mode;
+
+            if (!mask)
+                continue;
+            if (read_choice("Mode [f] FIXED  [s] SENSOR: ", &m) < 0)
+                continue;
+            if (m != 'f' && m != 's') {
+                printf("Invalid mode.\n");
+                continue;
+            }
+
+            mode = m == 'f' ? MODE_FIXED : MODE_SENSOR;
+            if (mask & 1) do_mode(NODE_I1, mode);
+            if (mask & 2) do_mode(NODE_I2, mode);
+        } else if (ch == '2') {
+            int mask = choose_intersections();
+            char o;
+            override_t ov;
+
+            if (!mask)
+                continue;
+            if (read_choice("Override [m] R3/main  [s] side  [n] none: ", &o) < 0)
+                continue;
+
+            if (o == 'm') ov = OVERRIDE_MAIN;
+            else if (o == 's') ov = OVERRIDE_SIDE;
+            else if (o == 'n') ov = OVERRIDE_NONE;
+            else {
+                printf("Invalid override.\n");
+                continue;
+            }
+
+            if (mask & 1) do_override(NODE_I1, ov);
+            if (mask & 2) do_override(NODE_I2, ov);
+        } else if (ch == '3') {
+            char t;
+
+            if (read_choice("Clear fault [1] I1  [2] I2  [x] X1: ", &t) < 0)
+                continue;
+            if (t == '1') do_clear_fault(NODE_I1);
+            else if (t == '2') do_clear_fault(NODE_I2);
+            else if (t == 'x') do_clear_fault(NODE_X1);
+            else printf("Invalid target.\n");
+        } else if (ch == '4') {
+            int on;
+
+            pthread_rwlock_wrlock(&g_c.lock);
+            on = g_c.sched_enabled = !g_c.sched_enabled;
+            if (on) {
+                g_c.pattern = -1;
+                g_c.node[NODE_I1].sched_paused = 0;
+                g_c.node[NODE_I2].sched_paused = 0;
+            }
+            pthread_rwlock_unlock(&g_c.lock);
+            log_msg("Operator: automatic schedule %s", on ? "ON" : "OFF");
+        } else if (ch == '5') {
+            print_status();
+        } else if (ch == '+') {
+            pthread_rwlock_wrlock(&g_c.lock);
+            g_c.sim_min = (g_c.sim_min + 60) % (24 * 60);
+            if (g_c.sched_enabled)
+                g_c.pattern = -1;
+            pthread_rwlock_unlock(&g_c.lock);
+            log_msg("Operator: simulated clock +1 hour");
+        } else if (ch == 'q') {
+            log_msg("Operator: Central shutting down");
+            return NULL;
+        } else if (ch == 'h' || ch == '?') {
+            print_menu();
+        } else {
+            printf("Unknown option. Press h for commands.\n");
         }
     }
-    return NULL;
 }

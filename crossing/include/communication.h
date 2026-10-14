@@ -10,6 +10,10 @@ typedef struct {
     int central_coid;
     uint16_t pulse_sequence;
     uint32_t message_sequence;
+    uint32_t session_id;
+    int i1_link;
+    int i2_link;
+    int central_link;
 } x1_communication_t;
 
 void x1_communication_init(x1_communication_t *comm);
@@ -29,5 +33,13 @@ int x1_send_fault_status(x1_communication_t *comm,
                          uint32_t fault_flags,
                          railway_state_t railway_state,
                          gate_state_t gate_state);
+
+int x1_send_heartbeat(x1_communication_t *comm,
+                      railway_event_t current_event,
+                      railway_state_t railway_state,
+                      gate_state_t gate_state,
+                      int warning_lights_on,
+                      train_signal_t train_signal,
+                      uint32_t fault_flags);
 
 #endif

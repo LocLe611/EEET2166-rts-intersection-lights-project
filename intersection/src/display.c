@@ -1,10 +1,4 @@
-/*
- * display.c — prints the intersection status whenever it changes.
- *
- * Terminal output can block (a telnet pty with a full buffer), which is why printing lives
- * in this thread and not in the controller, and why it happens AFTER the status box is
- * unlocked (status_box_wait copies the status out first).
- */
+
 #include <stdio.h>
 
 #include "display.h"
@@ -12,10 +6,8 @@
 #include "status_box.h"
 
 #ifndef USE_COLOUR
-#define USE_COLOUR 1 /* ANSI colours (Tera Term supports them); -DUSE_COLOUR=0 to turn off */
+#define USE_COLOUR 1
 #endif
-
-/* ==================================== names ==================================== */
 
 static const char *phase_name(unsigned p)
 {
@@ -100,8 +92,6 @@ static const char *colour(uint8_t l)
 #define RESET ""
 #endif
 
-/* ==================================== output ==================================== */
-
 static void print_status(const ctrl_t *c, const intersection_status_msg_t *s, bool central_up)
 {
     struct timespec now;
@@ -130,7 +120,7 @@ void *display_thread(void *arg)
     uint32_t seen = 0;
     bool central_up;
 
-    while (status_box_wait(&seen, 0, &s, &central_up)) /* sleeps until something changes */
+    while (status_box_wait(&seen, 0, &s, &central_up))
         print_status(c, &s, central_up);
     return NULL;
 }

@@ -1,6 +1,3 @@
-/*
- * rtutil.c — real-time helpers (see rtutil.h)
- */
 #include "rutil.h"
 
 #include <stdio.h>
@@ -10,10 +7,7 @@
 #include <sched.h>
 #include <sys/neutrino.h>
 
-
-#define TIMER_TOLERANCE_MS 2 /* see oneshot_is_due() */
-
-/* ======================================== time ======================================== */
+#define TIMER_TOLERANCE_MS 2
 
 void ts_now(struct timespec *ts)
 {
@@ -36,8 +30,6 @@ int64_t ts_diff_ms(const struct timespec *a, const struct timespec *b)
     return (int64_t)(a->tv_sec - b->tv_sec) * 1000 + (a->tv_nsec - b->tv_nsec) / 1000000;
 }
 
-/* =================================== one-shot timers =================================== */
-
 int oneshot_init(oneshot_t *t, int coid, int prio, int code)
 {
     struct sigevent ev;
@@ -50,16 +42,16 @@ int oneshot_init(oneshot_t *t, int coid, int prio, int code)
 void oneshot_arm(oneshot_t *t, uint32_t ms)
 {
     struct itimerspec its;
-    memset(&its, 0, sizeof its); /* it_interval = 0  ->  one-shot */
+    memset(&its, 0, sizeof its);
     if (ms == 0)
-        ms = 1; /* it_value = 0 would DISARM the timer */
+        ms = 1;
     its.it_value.tv_sec = ms / 1000;
     its.it_value.tv_nsec = (long)(ms % 1000) * 1000000L;
 
     ts_now(&t->deadline);
     ts_add_ms(&t->deadline, ms);
     t->armed = true;
-    if (timer_settime(t->id, 0, &its, NULL) == -1) /* relative; replaces any earlier arm */
+    if (timer_settime(t->id, 0, &its, NULL) == -1)
         perror("timer_settime");
 }
 
@@ -71,10 +63,6 @@ void oneshot_cancel(oneshot_t *t)
     t->armed = false;
 }
 
-/* Re-arming (or cancelling) a timer does NOT remove a pulse from an earlier arm that is
- * already waiting in the channel queue. So when a timer pulse arrives, only act on it if
- * the *current* arm is actually due. Timers never fire early, so a genuine expiry always
- * passes; a stale one is at least a whole phase too early and is ignored. */
 bool oneshot_is_due(oneshot_t *t)
 {
     struct timespec now;
@@ -82,7 +70,7 @@ bool oneshot_is_due(oneshot_t *t)
         return false;
     ts_now(&now);
     if (ts_diff_ms(&t->deadline, &now) > TIMER_TOLERANCE_MS)
-        return false; /* stale */
+        return false;
     t->armed = false;
     return true;
 }
@@ -92,8 +80,6 @@ void oneshot_destroy(oneshot_t *t)
     timer_delete(t->id);
     t->armed = false;
 }
-
-/* ======================================= threads ======================================= */
 
 int spawn_thread(pthread_t *tid, void *(*fn)(void *), void *arg, int prio)
 {
@@ -110,7 +96,7 @@ int spawn_thread(pthread_t *tid, void *(*fn)(void *), void *arg, int prio)
     rc = pthread_create(tid, &a, fn, arg);
     pthread_attr_destroy(&a);
     if (rc == EPERM)
-    { /* not allowed to set priorities: run anyway */
+    {
         fprintf(stderr, "warning: no permission for priority %d, using default\n", prio);
         rc = pthread_create(tid, NULL, fn, arg);
     }

@@ -22,12 +22,14 @@ void railway_controller_init(railway_controller_t *controller,
                              timer_t gate_timer);
 
 void railway_train_approach(railway_controller_t *controller);
-void railway_gate_lowering_complete(railway_controller_t *controller);
+void railway_gate_down_confirmed(railway_controller_t *controller);
+void railway_gate_timeout(railway_controller_t *controller);
 void railway_train_clear(railway_controller_t *controller);
 
 void railway_manual_gate_fault(railway_controller_t *controller);
 int railway_clear_fault(railway_controller_t *controller);
 
 void railway_print_state(const railway_controller_t *controller);
+void railway_send_heartbeat(railway_controller_t *controller);
 
 #endif

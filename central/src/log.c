@@ -1,22 +1,20 @@
-/* log.c — log file writer. Any thread calls log_msg(), which only formats and queues
- * the line; the logger thread is the ONLY one that touches the file, so slow file
- * I/O never delays the RX server or the link threads. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include "central.h"
+#include "console.h"
 
 #define LOG_Q 128
 
-static pthread_mutex_t m  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t  cv = PTHREAD_COND_INITIALIZER;
-static char     q[LOG_Q][LOG_LINE];
-static int      head, count;
+static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t console_m = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
+static char q[LOG_Q][LOG_LINE];
+static int head;
+static int count;
 static unsigned dropped;
-static char     recent[LOG_RECENT][LOG_LINE];   /* last few lines, for the dashboard */
-static int      recent_head, recent_n;
-static FILE    *fp;
+static FILE *fp;
 
 int log_init(const char *path)
 {
@@ -26,16 +24,28 @@ int log_init(const char *path)
 
 void log_msg(const char *fmt, ...)
 {
-    char line[LOG_LINE], body[LOG_LINE - 16];
+    char line[LOG_LINE];
+    char body[LOG_LINE - 16];
     va_list ap;
+    time_t t;
+    struct tm tm;
+
     va_start(ap, fmt);
     vsnprintf(body, sizeof body, fmt, ap);
     va_end(ap);
 
-    time_t t = time(NULL);
-    struct tm tm;
+    t = time(NULL);
     localtime_r(&t, &tm);
-    snprintf(line, sizeof line, "%02d:%02d:%02d %s", tm.tm_hour, tm.tm_min, tm.tm_sec, body);
+    snprintf(line, sizeof line, "%02d:%02d:%02d %s",
+             tm.tm_hour, tm.tm_min, tm.tm_sec, body);
+
+    pthread_mutex_lock(&console_m);
+    if (strncmp(body, "ALARM", 5) == 0)
+        printf(UI_RED "[CENTRAL] %s\n" UI_RESET, line);
+    else
+        printf("[CENTRAL] %s\n", line);
+    fflush(stdout);
+    pthread_mutex_unlock(&console_m);
 
     pthread_mutex_lock(&m);
     if (count < LOG_Q) {
@@ -45,45 +55,36 @@ void log_msg(const char *fmt, ...)
     } else {
         dropped++;
     }
-    memcpy(recent[recent_head], line, LOG_LINE);
-    recent_head = (recent_head + 1) % LOG_RECENT;
-    if (recent_n < LOG_RECENT) recent_n++;
     pthread_mutex_unlock(&m);
-
-    table_changed();   /* refresh the dashboard's events panel */
-}
-
-/* Copy the newest lines, oldest first. */
-int log_recent(char out[][LOG_LINE], int max)
-{
-    pthread_mutex_lock(&m);
-    int n = recent_n < max ? recent_n : max;
-    for (int i = 0; i < n; i++) {
-        int idx = (recent_head - n + i + LOG_RECENT) % LOG_RECENT;
-        memcpy(out[i], recent[idx], LOG_LINE);
-    }
-    pthread_mutex_unlock(&m);
-    return n;
 }
 
 void *logger_thread(void *arg)
 {
     (void)arg;
     char line[LOG_LINE];
+
     for (;;) {
         unsigned lost;
+
         pthread_mutex_lock(&m);
-        while (count == 0) pthread_cond_wait(&cv, &m);
+        while (count == 0)
+            pthread_cond_wait(&cv, &m);
+
         memcpy(line, q[head], LOG_LINE);
         head = (head + 1) % LOG_Q;
         count--;
-        lost = dropped; dropped = 0;
+        lost = dropped;
+        dropped = 0;
         pthread_mutex_unlock(&m);
 
-        if (!fp) continue;
-        if (lost) fprintf(fp, "(%u log lines dropped)\n", lost);
+        if (!fp)
+            continue;
+
+        if (lost)
+            fprintf(fp, "(%u log lines dropped)\n", lost);
         fprintf(fp, "%s\n", line);
         fflush(fp);
     }
+
     return NULL;
 }

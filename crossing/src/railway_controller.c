@@ -1,19 +1,20 @@
 #include "railway_controller.h"
 #include "hardware_io.h"
 #include "config.h"
+#include "console.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static void arm_gate_timer(railway_controller_t *controller)
+static void arm_gate_timeout(railway_controller_t *controller)
 {
     struct itimerspec spec;
 
     memset(&spec, 0, sizeof(spec));
 
-    spec.it_value.tv_sec = X1_GATE_LOWER_TIME_MS / 1000;
+    spec.it_value.tv_sec = X1_GATE_TIMEOUT_MS / 1000;
     spec.it_value.tv_nsec =
-        (long)(X1_GATE_LOWER_TIME_MS % 1000) * 1000000L;
+        (long)(X1_GATE_TIMEOUT_MS % 1000) * 1000000L;
 
     if (timer_settime(controller->gate_timer, 0, &spec, NULL) == -1) {
         perror("[X1] timer_settime");
@@ -121,11 +122,11 @@ void railway_controller_init(railway_controller_t *controller,
 void railway_train_approach(railway_controller_t *controller)
 {
     if (controller->state != RAIL_CLEAR) {
-        printf("[X1] TRAIN_APPROACH ignored: X1 is not CLEAR.\n");
+        printf("[X1] Approach ignored: crossing is not CLEAR.\n");
         return;
     }
 
-    printf("\n[X1] Train approach detected.\n");
+    printf("\n[X1][EVENT] Train approach detected.\n");
 
     controller->state = RAIL_APPROACHING;
     controller->train_active = 1;
@@ -137,29 +138,25 @@ void railway_train_approach(railway_controller_t *controller)
     hw_command_gate(GATE_LOWERING);
     hw_set_train_signal(TRAIN_SIGNAL_RED);
 
-    /*
-     * Notify I1 and I2 immediately so they can start
-     * the railway pre-emption sequence.
-     */
     x1_send_railway_event(controller->comm, RAIL_EVENT_APPROACH);
 
-    /*
-     * The timer simulates the physical time required
-     * for the boom gate to lower.
-     */
-    arm_gate_timer(controller);
+    arm_gate_timeout(controller);
 
     report_status(controller);
     railway_print_state(controller);
 }
 
-void railway_gate_lowering_complete(railway_controller_t *controller)
+void railway_gate_down_confirmed(railway_controller_t *controller)
 {
-    if (controller->state != RAIL_APPROACHING) {
+    if (controller->state != RAIL_APPROACHING ||
+        controller->gate_state != GATE_LOWERING) {
+        printf("[X1] Gate confirmation ignored: not waiting for gate-down.\n");
         return;
     }
 
-    printf("\n[X1] Boom gate is DOWN. Crossing is secured.\n");
+    cancel_gate_timer(controller);
+
+    printf("\n[X1][EVENT] Gate DOWN confirmed; crossing secured.\n");
 
     controller->gate_state = GATE_DOWN;
     controller->state = RAIL_GATES_DOWN;
@@ -171,13 +168,9 @@ void railway_gate_lowering_complete(railway_controller_t *controller)
     report_status(controller);
     railway_print_state(controller);
 
-    /*
-     * Once the gate is safely down, the train
-     * is allowed to proceed through the crossing.
-     */
     controller->state = RAIL_CROSSING;
 
-    printf("[X1] Train is crossing.\n");
+    printf("[X1][EVENT] Train is crossing.\n");
 
     x1_send_railway_event(controller->comm,
                           RAIL_EVENT_CROSSING);
@@ -186,14 +179,24 @@ void railway_gate_lowering_complete(railway_controller_t *controller)
     railway_print_state(controller);
 }
 
+void railway_gate_timeout(railway_controller_t *controller)
+{
+    if (controller->state != RAIL_APPROACHING ||
+        controller->gate_state != GATE_LOWERING) {
+        return;
+    }
+
+    printf(UI_RED "\n[X1][FAULT] Gate-down timeout after %d ms.\n" UI_RESET,
+           X1_GATE_TIMEOUT_MS);
+
+    enter_fault(controller, X1_FAULT_GATE_TIMEOUT);
+}
+
 void railway_train_clear(railway_controller_t *controller)
 {
     if (controller->state == RAIL_FAULT) {
-        /*
-         * The train may clear during a fault, but
-         * the fault remains latched until reset.
-         */
-        printf("\n[X1] Train clear detected, but fault remains latched.\n");
+        
+        printf("\n[X1][EVENT] Train cleared; fault remains latched.\n");
 
         controller->train_active = 0;
 
@@ -204,11 +207,11 @@ void railway_train_clear(railway_controller_t *controller)
 
     if (controller->state != RAIL_CROSSING &&
         controller->state != RAIL_GATES_DOWN) {
-        printf("[X1] TRAIN_CLEAR ignored: no active crossing sequence.\n");
+        printf("[X1] Clear ignored: no active crossing sequence.\n");
         return;
     }
 
-    printf("\n[X1] Train cleared crossing.\n");
+    printf("\n[X1][EVENT] Train cleared crossing.\n");
 
     controller->train_active = 0;
     controller->train_signal = TRAIN_SIGNAL_RED;
@@ -217,9 +220,6 @@ void railway_train_clear(railway_controller_t *controller)
     hw_set_train_signal(TRAIN_SIGNAL_RED);
     hw_command_gate(GATE_RAISING);
 
-    /*
-     * Gate raising is simulated immediately.
-     */
     controller->gate_state = GATE_UP;
     controller->warning_lights_on = 0;
     controller->state = RAIL_CLEAR;
@@ -236,7 +236,7 @@ void railway_train_clear(railway_controller_t *controller)
 
 void railway_manual_gate_fault(railway_controller_t *controller)
 {
-    printf("\n[X1] Gate fault simulated.\n");
+    printf(UI_RED "\n[X1][FAULT] Gate/sensor fault injected.\n" UI_RESET);
 
     enter_fault(controller,
                 X1_FAULT_GATE_SENSOR);
@@ -245,19 +245,16 @@ void railway_manual_gate_fault(railway_controller_t *controller)
 int railway_clear_fault(railway_controller_t *controller)
 {
     if (controller->state != RAIL_FAULT) {
-        printf("[X1] CLEAR_FAULT rejected: X1 is not in FAULT.\n");
+        printf("[X1] Clear fault rejected: X1 is not in FAULT.\n");
         return -1;
     }
 
-    /*
-     * Do not reset while a train is still active.
-     */
     if (controller->train_active) {
-        printf("[X1] CLEAR_FAULT rejected: train event is still active.\n");
+        printf("[X1] Clear fault rejected: train is still active.\n");
         return -1;
     }
 
-    printf("\n[X1] Fault manually cleared. Returning gate to safe UP position.\n");
+    printf("\n[X1][EVENT] Fault cleared; returning gate UP.\n");
 
     controller->gate_state = GATE_RAISING;
     hw_command_gate(GATE_RAISING);
@@ -272,10 +269,6 @@ int railway_clear_fault(railway_controller_t *controller)
     hw_set_warning_lights(0);
     hw_set_train_signal(TRAIN_SIGNAL_RED);
 
-    /*
-     * Tell I1 and I2 that the railway fault/pre-emption
-     * condition has ended.
-     */
     x1_send_railway_event(controller->comm,
                           RAIL_EVENT_CLEAR);
 
@@ -285,27 +278,62 @@ int railway_clear_fault(railway_controller_t *controller)
     return 0;
 }
 
+void railway_send_heartbeat(railway_controller_t *controller)
+{
+    railway_event_t event;
+
+    if (controller == NULL || controller->comm == NULL) {
+        return;
+    }
+
+    switch (controller->state) {
+        case RAIL_CLEAR:
+            event = RAIL_EVENT_CLEAR;
+            break;
+        case RAIL_APPROACHING:
+            event = RAIL_EVENT_APPROACH;
+            break;
+        case RAIL_GATES_DOWN:
+        case RAIL_CROSSING:
+            event = RAIL_EVENT_CROSSING;
+            break;
+        case RAIL_FAULT:
+        default:
+            event = RAIL_EVENT_FAULT;
+            break;
+    }
+
+    x1_send_heartbeat(controller->comm,
+                      event,
+                      controller->state,
+                      controller->gate_state,
+                      controller->warning_lights_on,
+                      controller->train_signal,
+                      controller->fault_flags);
+}
+
 void railway_print_state(const railway_controller_t *controller)
 {
-    printf("----------------------------------------\n");
-    printf(" X1 railway state : %s\n",
-           railway_state_name(controller->state));
-
-    printf(" Gate state       : %s\n",
+    printf("[X1][STATUS] Railway=%s | Gate=%s | Warning=",
+           railway_state_name(controller->state),
            gate_state_name(controller->gate_state));
 
-    printf(" Warning lights   : %s\n",
-           controller->warning_lights_on ? "ON" : "OFF");
+    if (controller->warning_lights_on)
+        printf(UI_YELLOW "ON" UI_RESET);
+    else
+        printf("OFF");
 
-    printf(" Train signal     : %s\n",
-           controller->train_signal == TRAIN_SIGNAL_GREEN ?
-           "GREEN" : "RED");
+    printf(" | Train=");
+    if (controller->train_signal == TRAIN_SIGNAL_GREEN)
+        printf(UI_GREEN "GREEN" UI_RESET);
+    else
+        printf(UI_RED "RED" UI_RESET);
 
-    printf(" Train active     : %s\n",
-           controller->train_active ? "YES" : "NO");
+    if (controller->fault_flags)
+        printf(UI_RED " | Fault=0x%08X" UI_RESET,
+               (unsigned)controller->fault_flags);
+    else
+        printf(" | Fault=none");
 
-    printf(" Fault flags      : 0x%08X\n",
-           (unsigned)controller->fault_flags);
-
-    printf("----------------------------------------\n");
+    printf("\n");
 }

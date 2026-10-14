@@ -1,5 +1,6 @@
 #include "communication.h"
 #include "config.h"
+#include "console.h"
 
 #include <sys/dispatch.h>
 #include <sys/neutrino.h>
@@ -31,6 +32,7 @@ static uint32_t next_message_sequence(x1_communication_t *comm)
 }
 
 static int ensure_connection(int *coid,
+                             int *link,
                              const char *service_name,
                              const char *hostname)
 {
@@ -38,21 +40,28 @@ static int ensure_connection(int *coid,
         return *coid;
     }
 
-    *coid = name_open(service_name, NAME_FLAG_ATTACH_GLOBAL);
+    *coid = name_open(service_name,
+                      IPC_USE_GLOBAL_NAMES ? NAME_FLAG_ATTACH_GLOBAL : 0);
 
     if (*coid == -1) {
-        fprintf(stderr,
-                "[COMMS] Cannot connect to %s (service %s): %s\n",
-                hostname, service_name, strerror(errno));
+        if (*link != 0) {
+            fprintf(stderr,
+                    "[X1][COMMS] %s OFFLINE (%s): %s\n",
+                    hostname, service_name, strerror(errno));
+        }
+        *link = 0;
     } else {
-        printf("[COMMS] Connected to %s service '%s'.\n",
-               hostname, service_name);
+        if (*link != 1)
+            printf("[X1][COMMS] %s " UI_GREEN "ONLINE" UI_RESET " (%s).\n",
+                   hostname, service_name);
+        *link = 1;
     }
 
     return *coid;
 }
 
 static int send_pulse_to(int *coid,
+                         int *link,
                          const char *service_name,
                          const char *hostname,
                          railway_event_t event,
@@ -60,19 +69,20 @@ static int send_pulse_to(int *coid,
 {
     int32_t value;
 
-    if (ensure_connection(coid, service_name, hostname) == -1) {
+    if (ensure_connection(coid, link, service_name, hostname) == -1) {
         return -1;
     }
 
     value = pack_railway_pulse(NODE_X1, event, sequence);
 
-    if (MsgSendPulse(*coid, -1, PULSE_RAILWAY_EVENT, value) == -1) {
+    if (MsgSendPulse(*coid, RAILWAY_PULSE_PRIORITY, PULSE_RAILWAY_EVENT, value) == -1) {
         fprintf(stderr,
-                "[COMMS] Pulse to %s failed: %s\n",
+                "[X1][COMMS] Event to %s failed: %s\n",
                 hostname, strerror(errno));
 
         name_close(*coid);
         *coid = -1;
+        *link = 0;
 
         return -1;
     }
@@ -90,6 +100,7 @@ static int send_message_to_central(x1_communication_t *comm,
     int rc;
 
     if (ensure_connection(&comm->central_coid,
+                          &comm->central_link,
                           CENTRAL_SERVICE,
                           CENTRAL_HOSTNAME) == -1) {
         return -1;
@@ -99,17 +110,13 @@ static int send_message_to_central(x1_communication_t *comm,
 
     timeout = (uint64_t)IPC_SEND_TIMEOUT_MS * 1000000ULL;
 
-    /*
-     * Prevent a failed Central node from blocking X1 forever.
-     * The timeout applies to the immediately following MsgSend().
-     */
     if (TimerTimeout(CLOCK_MONOTONIC,
                      _NTO_TIMEOUT_SEND | _NTO_TIMEOUT_REPLY,
                      NULL,
                      &timeout,
                      NULL) == -1) {
         fprintf(stderr,
-                "[COMMS] TimerTimeout setup failed: %s\n",
+                "[X1][COMMS] TimerTimeout failed: %s\n",
                 strerror(errno));
     }
 
@@ -121,20 +128,27 @@ static int send_message_to_central(x1_communication_t *comm,
 
     if (rc == -1) {
         fprintf(stderr,
-                "[COMMS] Message to Central failed: %s\n",
+                "[X1][COMMS] Central send failed: %s\n",
                 strerror(errno));
 
         name_close(comm->central_coid);
         comm->central_coid = -1;
+        comm->central_link = 0;
 
+        return -1;
+    }
+
+    if (reply.sequence != sequence) {
+        fprintf(stderr,
+                "[X1][COMMS] Central reply mismatch for seq %u.\n",
+                sequence);
         return -1;
     }
 
     if (reply.result != RESULT_OK) {
         fprintf(stderr,
-                "[COMMS] Central rejected sequence %u (result=%d).\n",
+                "[X1][COMMS] Central rejected seq %u (result=%d).\n",
                 sequence, reply.result);
-
         return -1;
     }
 
@@ -152,6 +166,10 @@ void x1_communication_init(x1_communication_t *comm)
     comm->central_coid = -1;
     comm->pulse_sequence = 0;
     comm->message_sequence = 0;
+    comm->session_id = make_session_id();
+    comm->i1_link = -1;
+    comm->i2_link = -1;
+    comm->central_link = -1;
 }
 
 void x1_communication_close(x1_communication_t *comm)
@@ -174,6 +192,10 @@ void x1_communication_close(x1_communication_t *comm)
         name_close(comm->central_coid);
         comm->central_coid = -1;
     }
+
+    comm->i1_link = -1;
+    comm->i2_link = -1;
+    comm->central_link = -1;
 }
 
 int x1_send_railway_event(x1_communication_t *comm,
@@ -190,18 +212,20 @@ int x1_send_railway_event(x1_communication_t *comm,
     sequence = next_pulse_sequence(comm);
 
     i1_ok = send_pulse_to(&comm->i1_coid,
+                          &comm->i1_link,
                           I1_SERVICE,
                           I1_HOSTNAME,
                           event,
                           sequence);
 
     i2_ok = send_pulse_to(&comm->i2_coid,
+                          &comm->i2_link,
                           I2_SERVICE,
                           I2_HOSTNAME,
                           event,
                           sequence);
 
-    printf("[COMMS] Railway event %u seq=%u -> I1:%s I2:%s\n",
+    printf("[X1][COMMS] Rail event %u #%u -> I1:%s I2:%s\n",
            (unsigned)event,
            (unsigned)sequence,
            i1_ok == 0 ? "OK" : "FAIL",
@@ -232,6 +256,7 @@ int x1_send_railway_status(x1_communication_t *comm,
     message.header.type = MSG_RAILWAY_STATUS;
     message.header.subtype = SUBTYPE_STATUS_UPDATE;
     message.header.sender = NODE_X1;
+    message.header.session = comm->session_id;
     message.header.sequence = sequence;
 
     message.railway_state = (uint8_t)railway_state;
@@ -245,7 +270,7 @@ int x1_send_railway_status(x1_communication_t *comm,
                                  sizeof(message),
                                  sequence);
 
-    printf("[COMMS] RAILWAY_STATUS seq=%u -> Central: %s\n",
+    printf("[X1][COMMS] RAILWAY_STATUS #%u -> Central:%s\n",
            (unsigned)sequence,
            rc == 0 ? "OK" : "FAIL");
 
@@ -272,6 +297,7 @@ int x1_send_fault_status(x1_communication_t *comm,
     message.header.type = MSG_FAULT_STATUS;
     message.header.subtype = SUBTYPE_FAULT_REPORT;
     message.header.sender = NODE_X1;
+    message.header.session = comm->session_id;
     message.header.sequence = sequence;
 
     message.fault_flags = fault_flags;
@@ -284,9 +310,64 @@ int x1_send_fault_status(x1_communication_t *comm,
                                  sizeof(message),
                                  sequence);
 
-    printf("[COMMS] FAULT_STATUS seq=%u -> Central: %s\n",
+    printf("[X1][COMMS] FAULT_STATUS #%u -> Central:%s\n",
            (unsigned)sequence,
            rc == 0 ? "OK" : "FAIL");
 
     return rc;
 }
+
+int x1_send_heartbeat(x1_communication_t *comm,
+                      railway_event_t current_event,
+                      railway_state_t railway_state,
+                      gate_state_t gate_state,
+                      int warning_lights_on,
+                      train_signal_t train_signal,
+                      uint32_t fault_flags)
+{
+    uint16_t pulse_sequence;
+    uint32_t message_sequence;
+    railway_status_msg_t message;
+    int i1_ok;
+    int i2_ok;
+    int central_ok;
+
+    if (comm == NULL) {
+        return -1;
+    }
+
+    pulse_sequence = next_pulse_sequence(comm);
+    i1_ok = send_pulse_to(&comm->i1_coid,
+                          &comm->i1_link,
+                          I1_SERVICE,
+                          I1_HOSTNAME,
+                          current_event,
+                          pulse_sequence);
+    i2_ok = send_pulse_to(&comm->i2_coid,
+                          &comm->i2_link,
+                          I2_SERVICE,
+                          I2_HOSTNAME,
+                          current_event,
+                          pulse_sequence);
+
+    memset(&message, 0, sizeof(message));
+    message_sequence = next_message_sequence(comm);
+    message.header.type = MSG_RAILWAY_STATUS;
+    message.header.subtype = SUBTYPE_STATUS_UPDATE;
+    message.header.sender = NODE_X1;
+    message.header.session = comm->session_id;
+    message.header.sequence = message_sequence;
+    message.railway_state = (uint8_t)railway_state;
+    message.gate_state = (uint8_t)gate_state;
+    message.warning_lights_on = warning_lights_on ? 1u : 0u;
+    message.train_signal = (uint8_t)train_signal;
+    message.fault_flags = fault_flags;
+
+    central_ok = send_message_to_central(comm,
+                                         &message,
+                                         sizeof(message),
+                                         message_sequence);
+
+    return (i1_ok == 0 && i2_ok == 0 && central_ok == 0) ? 0 : -1;
+}
+

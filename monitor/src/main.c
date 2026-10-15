@@ -112,13 +112,18 @@ static void print_ped(unsigned ped)
 }
 
 static void print_intersection(const char *name,
-                               const char *side,
-                               unsigned bit,
+                               const char *side_road,
+                               unsigned node,
                                const system_status_msg_t *s)
 {
-    const intersection_status_msg_t *st = bit == NODE_I1 ? &s->i1 : &s->i2;
-    int online = (s->online_mask & NODE_MASK(bit)) != 0;
-    int have_data = (s->data_mask & NODE_MASK(bit)) != 0;
+    const intersection_status_msg_t *st;
+    int online;
+    int have_data;
+
+    st = node == NODE_I1 ? &s->i1 : &s->i2;
+
+    online = (s->online_mask & NODE_MASK(node)) != 0;
+    have_data = (s->data_mask & NODE_MASK(node)) != 0;
 
     printf("\n%s [", name);
     print_link(online);
@@ -129,19 +134,35 @@ static void print_intersection(const char *name,
         return;
     }
 
-    printf(" | %s | %s\n", mode_name(st->mode), phase_name(st->phase));
-    printf("  R3=");
+    printf(" | MODE=%s | PHASE=%s\n",
+           mode_name(st->mode),
+           phase_name(st->phase));
+
+    printf("  VEH MAIN R3 Glen Huntly (EW)=");
     print_light(st->main_light);
-    printf(" | %s=", side);
+
+    printf(" | VEH SIDE %s=", side_road);
     print_light(st->side_light);
-    printf(" | Ped=");
+
+    printf(" | PED GROUP=");
     print_ped(st->ped_light);
+
     printf("\n");
-    printf("  Railway=%s | X1-link=%s | Override=%s\n",
-           rail_name(st->railway_state),
-           st->x1_link_ok ? "OK" : "LOST",
-           st->override == OVERRIDE_MAIN ? "R3/MAIN" :
-           st->override == OVERRIDE_SIDE ? "SIDE" : "NONE");
+
+    printf("  X1=%s | X1 LINK=",
+           rail_name(st->railway_state));
+
+    if (st->x1_link_ok)
+        printf(UI_GREEN "OK" UI_RESET);
+    else
+        printf(UI_RED "LOST" UI_RESET);
+
+    printf(" | OVERRIDE=%s\n",
+           st->override == OVERRIDE_MAIN
+               ? "R3/MAIN"
+               : st->override == OVERRIDE_SIDE
+                     ? "SIDE"
+                     : "NONE");
 }
 
 static void print_x1(const system_status_msg_t *s)
@@ -190,8 +211,8 @@ static void print_snapshot(const system_status_msg_t *s, int central_online)
     if (s->alarm_mask)
         printf(UI_RED " ACTIVE FAULT MASK: 0x%X\n" UI_RESET, s->alarm_mask);
 
-    print_intersection("I1", "R1", NODE_I1, s);
-    print_intersection("I2", "R2", NODE_I2, s);
+    print_intersection("I1", "R1 Grange", NODE_I1, s);
+    print_intersection("I2", "R2 Booran", NODE_I2, s);
     print_x1(s);
     printf("%s\n", UI_RULE);
 }

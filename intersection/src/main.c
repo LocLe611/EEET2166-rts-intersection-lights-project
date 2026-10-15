@@ -51,13 +51,13 @@ static void parse_args(int argc, char *argv[], ctrl_t *c, const char **service)
         c->node = NODE_I1;
         c->name = "I1";
         *service = I1_SERVICE;
-        c->main_road = "R3 Glen Huntly";
+        c->main_road = "R3 Glen Huntly (EW)";
         c->side_road = "R1 Grange";
     } else {
         c->node = NODE_I2;
         c->name = "I2";
         *service = I2_SERVICE;
-        c->main_road = "R3 Glen Huntly";
+        c->main_road = "R3 Glen Huntly (EW)";
         c->side_road = "R2 Booran";
     }
 
@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
     printf(" Host    : %s\n", hostname);
     printf(" Service : /dev/name/%s/%s\n",
            IPC_USE_GLOBAL_NAMES ? "global" : "local", service);
-    printf(" Roads   : %s / %s\n", c.main_road, c.side_road);
+    printf(" Signals : MAIN=%s | SIDE=%s | PED=group\n", c.main_road, c.side_road);
     printf(" Mode    : FIXED startup | TIME_SCALE %d | X1 %s\n",
            TIME_SCALE, c.standalone ? "standalone" : "heartbeat monitored");
     printf("%s\n", UI_RULE);
